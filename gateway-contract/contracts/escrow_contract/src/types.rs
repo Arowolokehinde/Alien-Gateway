@@ -10,6 +10,8 @@ pub enum DataKey {
     ScheduledPayment(u32),
     /// Key for the auto-incrementing payment counter in instance storage.
     PaymentCounter,
+    /// Key for auto-pay settings, indexed by source vault commitment.
+    AutoPay(BytesN<32>),
 }
 
 /// Represents the state of a user's vault within the contract.
@@ -40,4 +42,18 @@ pub struct ScheduledPayment {
     pub release_at: u64,
     /// Whether the payment has already been executed.
     pub executed: bool,
+}
+
+/// Represents recurring payment settings for a source vault.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoPay {
+    /// The recipient vault commitment.
+    pub to: BytesN<32>,
+    /// Amount transferred on each trigger.
+    pub amount: i128,
+    /// Required seconds between triggers.
+    pub interval: u64,
+    /// Timestamp of the most recent successful trigger.
+    pub last_paid: u64,
 }

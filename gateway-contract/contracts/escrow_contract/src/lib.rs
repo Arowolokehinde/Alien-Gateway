@@ -13,8 +13,11 @@ mod test;
 
 use crate::errors::EscrowError;
 use crate::events::Events;
-use crate::storage::{increment_payment_id, read_vault, write_scheduled_payment, write_vault};
-use crate::types::ScheduledPayment;
+use crate::storage::{
+    increment_payment_id, read_auto_pay, read_vault, write_auto_pay, write_scheduled_payment,
+    write_vault,
+};
+use crate::types::{AutoPay, ScheduledPayment};
 use soroban_sdk::{contract, contractimpl, BytesN, Env};
 
 #[contract]
@@ -99,5 +102,60 @@ impl EscrowContract {
         );
 
         Ok(payment_id)
+    }
+
+    /// Stores recurring payment settings for a source vault.
+    pub fn setup_auto_pay(
+        env: Env,
+        from: BytesN<32>,
+        to: BytesN<32>,
+        amount: i128,
+        interval: u64,
+    ) -> Result<(), EscrowError> {
+        if amount <= 0 || interval == 0 {
+            return Err(EscrowError::InvalidAmount);
+        }
+
+        let vault = read_vault(&env, &from).ok_or(EscrowError::VaultNotFound)?;
+        vault.owner.require_auth();
+
+        let auto_pay = AutoPay {
+            to,
+            amount,
+            interval,
+            last_paid: 0,
+        };
+        write_auto_pay(&env, &from, &auto_pay);
+        Ok(())
+    }
+
+    /// Triggers one recurring payment cycle if interval has elapsed.
+    pub fn trigger_auto_pay(env: Env, from: BytesN<32>) -> Result<(), EscrowError> {
+        let mut auto_pay = read_auto_pay(&env, &from).ok_or(EscrowError::VaultNotFound)?;
+        let mut from_vault = read_vault(&env, &from).ok_or(EscrowError::VaultNotFound)?;
+        let mut to_vault = read_vault(&env, &auto_pay.to).ok_or(EscrowError::VaultNotFound)?;
+
+        let now = env.ledger().timestamp();
+        let next_allowed = if auto_pay.last_paid == 0 {
+            auto_pay.interval
+        } else {
+            auto_pay.last_paid.saturating_add(auto_pay.interval)
+        };
+        if now < next_allowed {
+            return Err(EscrowError::PastReleaseTime);
+        }
+
+        if from_vault.balance < auto_pay.amount {
+            return Err(EscrowError::InsufficientBalance);
+        }
+
+        from_vault.balance -= auto_pay.amount;
+        to_vault.balance += auto_pay.amount;
+        auto_pay.last_paid = now;
+
+        write_vault(&env, &from, &from_vault);
+        write_vault(&env, &auto_pay.to, &to_vault);
+        write_auto_pay(&env, &from, &auto_pay);
+        Ok(())
     }
 }

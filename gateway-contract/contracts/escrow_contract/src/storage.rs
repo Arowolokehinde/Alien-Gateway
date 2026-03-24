@@ -1,5 +1,5 @@
 use crate::errors::EscrowError;
-use crate::types::{DataKey, ScheduledPayment, VaultState};
+use crate::types::{AutoPay, DataKey, ScheduledPayment, VaultState};
 use soroban_sdk::{BytesN, Env};
 
 /// Reads a vault's state from persistent storage.
@@ -43,4 +43,18 @@ pub fn write_scheduled_payment(env: &Env, id: u32, payment: &ScheduledPayment) {
     env.storage()
         .persistent()
         .set(&DataKey::ScheduledPayment(id), payment);
+}
+
+/// Reads auto-pay settings for a source vault.
+pub fn read_auto_pay(env: &Env, from: &BytesN<32>) -> Option<AutoPay> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::AutoPay(from.clone()))
+}
+
+/// Writes auto-pay settings for a source vault.
+pub fn write_auto_pay(env: &Env, from: &BytesN<32>, auto_pay: &AutoPay) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::AutoPay(from.clone()), auto_pay);
 }
