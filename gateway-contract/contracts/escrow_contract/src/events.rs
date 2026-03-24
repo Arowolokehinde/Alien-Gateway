@@ -1,29 +1,28 @@
-use soroban_sdk::{contracttype, BytesN, Env};
+use soroban_sdk::{contractevent, BytesN, Env};
 
-/// Event structure for a scheduled payment.
-#[contracttype]
+/// Event emitted when a new payment is scheduled.
+#[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SchedPayEvent {
-    /// The unique identifier of the payment.
+pub struct SchedulePayEvent {
+    /// The unique identifier assigned to this payment.
+    #[topic]
     pub payment_id: u32,
-    /// The source vault commitment.
+    /// The commitment identifier of the source vault.
     pub from: BytesN<32>,
-    /// The destination commitment.
+    /// The commitment identifier of the intended recipient.
     pub to: BytesN<32>,
-    /// The amount scheduled.
+    /// The amount of tokens to be transferred.
     pub amount: i128,
-    /// The timestamp for release.
+    /// The timestamp at or after which the payment can be executed.
     pub release_at: u64,
 }
 
-pub struct EscrowEvents;
+/// Helper for emitting contract events.
+pub struct Events;
 
-impl EscrowEvents {
-    /// Emits a scheduled payment event.
-    ///
-    /// This uses the `publish` method with `#[allow(deprecated)]` to maintain
-    /// compatibility with the current SDK while the transition to `#[contractevent]` is finalized.
-    pub fn emit_sched_pay(
+impl Events {
+    /// Emits a `SchedulePayEvent` to the host.
+    pub fn schedule_pay(
         env: &Env,
         payment_id: u32,
         from: BytesN<32>,
@@ -31,17 +30,13 @@ impl EscrowEvents {
         amount: i128,
         release_at: u64,
     ) {
-        let topics = ("SCHED_PAY", payment_id);
-        #[allow(deprecated)]
-        env.events().publish(
-            topics,
-            SchedPayEvent {
-                payment_id,
-                from,
-                to,
-                amount,
-                release_at,
-            },
-        );
+        SchedulePayEvent {
+            payment_id,
+            from,
+            to,
+            amount,
+            release_at,
+        }
+        .publish(env);
     }
 }

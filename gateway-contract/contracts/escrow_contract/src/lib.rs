@@ -8,8 +8,11 @@ pub mod events;
 pub mod storage;
 pub mod types;
 
+#[cfg(test)]
+mod test;
+
 use crate::errors::EscrowError;
-use crate::events::EscrowEvents;
+use crate::events::Events;
 use crate::storage::{increment_payment_id, read_vault, write_scheduled_payment, write_vault};
 use crate::types::ScheduledPayment;
 use soroban_sdk::{contract, contractimpl, BytesN, Env};
@@ -72,7 +75,7 @@ impl EscrowContract {
         write_vault(&env, &from, &vault);
 
         // 6. Generate Payment ID
-        let payment_id = increment_payment_id(&env);
+        let payment_id = increment_payment_id(&env)?;
 
         // 7. Store Scheduled Payment
         let payment = ScheduledPayment {
@@ -86,7 +89,7 @@ impl EscrowContract {
         write_scheduled_payment(&env, payment_id, &payment);
 
         // 8. Emit Event
-        EscrowEvents::emit_sched_pay(
+        Events::schedule_pay(
             &env,
             payment_id,
             payment.from,

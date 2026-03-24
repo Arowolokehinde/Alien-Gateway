@@ -1,6 +1,6 @@
 use crate::errors::EscrowError;
 use crate::types::{DataKey, ScheduledPayment, VaultState};
-use soroban_sdk::{panic_with_error, BytesN, Env};
+use soroban_sdk::{BytesN, Env};
 
 /// Reads a vault's state from persistent storage.
 pub fn read_vault(env: &Env, from: &BytesN<32>) -> Option<VaultState> {
@@ -19,8 +19,8 @@ pub fn write_vault(env: &Env, from: &BytesN<32>, vault: &VaultState) {
 /// Increments the global payment counter and returns the previous ID.
 ///
 /// ### Errors
-/// - Panics with `EscrowError::PaymentCounterOverflow` if the counter reaches `u32::MAX`.
-pub fn increment_payment_id(env: &Env) -> u32 {
+/// - Returns `EscrowError::PaymentCounterOverflow` if the counter reaches `u32::MAX`.
+pub fn increment_payment_id(env: &Env) -> Result<u32, EscrowError> {
     let id: u32 = env
         .storage()
         .instance()
@@ -29,12 +29,13 @@ pub fn increment_payment_id(env: &Env) -> u32 {
 
     let next = id
         .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(env, EscrowError::PaymentCounterOverflow));
+        .ok_or(EscrowError::PaymentCounterOverflow)?;
 
     env.storage()
         .instance()
         .set(&DataKey::PaymentCounter, &next);
-    id
+
+    Ok(id)
 }
 
 /// Records a new scheduled payment in persistent storage.
