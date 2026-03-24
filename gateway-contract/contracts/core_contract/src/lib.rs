@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod events;
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, BytesN, Env,
 };
