@@ -172,14 +172,7 @@ fn test_execute_scheduled_success_transfers_and_marks_executed() {
     let amount = 400i128;
     let release_at = 2000u64;
 
-    create_vault(
-        &env,
-        &contract_id,
-        &from,
-        &from_owner,
-        &token,
-        1000,
-    );
+    create_vault(&env, &contract_id, &from, &from_owner, &token, 1000);
     create_vault(&env, &contract_id, &to, &to_owner, &token, 0);
 
     env.ledger().set_timestamp(1000);
@@ -226,14 +219,7 @@ fn test_execute_scheduled_rejects_early() {
         &token,
         1000,
     );
-    create_vault(
-        &env,
-        &contract_id,
-        &to,
-        &Address::generate(&env),
-        &token,
-        0,
-    );
+    create_vault(&env, &contract_id, &to, &Address::generate(&env), &token, 0);
 
     env.ledger().set_timestamp(1000);
     let payment_id = client.schedule_payment(&from, &to, &100, &2000);
