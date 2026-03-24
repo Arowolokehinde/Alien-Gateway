@@ -11,7 +11,7 @@ mod test;
 use soroban_sdk::{contract, contractclient, contractimpl, panic_with_error, Address, BytesN, Env};
 
 pub use crate::errors::ContractError;
-pub use crate::events::UsernameRegistered;
+pub use crate::events::{MerkleRootUpdated, UsernameRegistered};
 pub use crate::types::{Proof, PublicSignals};
 
 #[contract]
@@ -22,6 +22,17 @@ pub trait VerifierContract {
     fn verify_proof(env: Env, proof: Proof, public_signals: PublicSignals) -> bool;
 }
 
+fn current_merkle_root(env: &Env) -> BytesN<32> {
+    storage::get_merkle_root(env)
+        .unwrap_or_else(|| panic_with_error!(env, ContractError::NotInitialized))
+}
+
+fn update_merkle_root(env: &Env, old_root: BytesN<32>, new_root: BytesN<32>) {
+    storage::set_merkle_root(env, &new_root);
+
+    MerkleRootUpdated { old_root, new_root }.publish(env);
+}
+
 #[contractimpl]
 impl CoreContract {
     pub fn init(env: Env, verifier: Address, root: BytesN<32>) {
@@ -30,12 +41,11 @@ impl CoreContract {
         }
 
         storage::set_verifier(&env, &verifier);
-        storage::set_root(&env, &root);
+        storage::set_merkle_root(&env, &root);
     }
 
     pub fn submit_proof(env: Env, proof: Proof, public_signals: PublicSignals) {
-        let current_root = storage::get_root(&env)
-            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized));
+        let current_root = current_merkle_root(&env);
 
         if current_root != public_signals.old_root.clone() {
             panic_with_error!(&env, ContractError::RootMismatch);
@@ -54,7 +64,7 @@ impl CoreContract {
         }
 
         storage::store_commitment(&env, &public_signals.commitment);
-        storage::set_root(&env, &public_signals.new_root);
+        update_merkle_root(&env, current_root, public_signals.new_root.clone());
 
         UsernameRegistered {
             commitment: public_signals.commitment,
@@ -62,8 +72,8 @@ impl CoreContract {
         .publish(&env);
     }
 
-    pub fn get_root(env: Env) -> Option<BytesN<32>> {
-        storage::get_root(&env)
+    pub fn get_merkle_root(env: Env) -> BytesN<32> {
+        current_merkle_root(&env)
     }
 
     pub fn get_verifier(env: Env) -> Option<Address> {

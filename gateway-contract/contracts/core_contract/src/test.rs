@@ -5,8 +5,8 @@ use crate::types::{Proof, PublicSignals};
 use crate::{CoreContract, CoreContractClient};
 use soroban_sdk::testutils::Events as _;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, map, Address, BytesN, Env, Error, IntoVal, Map, Symbol,
-    Val,
+    contract, contractimpl, contracttype, map, vec, Address, BytesN, Env, Error, IntoVal,
+    InvokeError, Map, Symbol, Val,
 };
 
 #[contract]
@@ -44,10 +44,15 @@ fn bytes(env: &Env, byte: u8) -> BytesN<32> {
     BytesN::from_array(env, &[byte; 32])
 }
 
-fn offchain_register_fixture(env: &Env) -> (Proof, PublicSignals) {
-    let old_root = bytes(env, 0);
-    let new_root = bytes(env, 42);
-    let commitment = bytes(env, 7);
+fn registration_fixture(
+    env: &Env,
+    old_byte: u8,
+    new_byte: u8,
+    commitment_byte: u8,
+) -> (Proof, PublicSignals) {
+    let old_root = bytes(env, old_byte);
+    let new_root = bytes(env, new_byte);
+    let commitment = bytes(env, commitment_byte);
 
     (
         Proof {
@@ -76,24 +81,46 @@ fn setup(env: &Env) -> (Address, CoreContractClient<'_>, Address) {
 }
 
 fn assert_submit_error(
-    result: Result<Result<(), soroban_sdk::ConversionError>, Result<Error, soroban_sdk::InvokeError>>,
+    result: Result<
+        Result<(), soroban_sdk::ConversionError>,
+        Result<Error, soroban_sdk::InvokeError>,
+    >,
     expected: ContractError,
 ) {
     assert_eq!(result, Err(Ok(expected.into())));
 }
 
 #[test]
+fn init_sets_the_current_merkle_root() {
+    let env = Env::default();
+    let (_, client, _) = setup(&env);
+
+    assert_eq!(client.get_merkle_root(), bytes(&env, 0));
+}
+
+#[test]
 fn submit_proof_succeeds_and_updates_state() {
     let env = Env::default();
     let (contract_id, client, _) = setup(&env);
-    let (proof, public_signals) = offchain_register_fixture(&env);
+    let (proof, public_signals) = registration_fixture(&env, 0, 42, 7);
 
     client.submit_proof(&proof, &public_signals);
 
-    assert_eq!(client.get_root(), Some(public_signals.new_root.clone()));
+    assert_eq!(client.get_merkle_root(), public_signals.new_root.clone());
     assert!(client.has_commitment(&public_signals.commitment));
 
-    let expected_event_data: Map<Symbol, Val> = map![
+    let expected_root_event_data: Map<Symbol, Val> = map![
+        &env,
+        (
+            Symbol::new(&env, "old_root"),
+            public_signals.old_root.clone().into_val(&env)
+        ),
+        (
+            Symbol::new(&env, "new_root"),
+            public_signals.new_root.clone().into_val(&env)
+        )
+    ];
+    let expected_registration_event_data: Map<Symbol, Val> = map![
         &env,
         (
             Symbol::new(&env, "commitment"),
@@ -105,9 +132,14 @@ fn submit_proof_succeeds_and_updates_state() {
         soroban_sdk::vec![
             &env,
             (
+                contract_id.clone(),
+                (Symbol::new(&env, "merkle_root_updated"),).into_val(&env),
+                expected_root_event_data.into_val(&env),
+            ),
+            (
                 contract_id,
                 (Symbol::new(&env, "username_registered"),).into_val(&env),
-                expected_event_data.into_val(&env),
+                expected_registration_event_data.into_val(&env),
             )
         ]
     );
@@ -120,38 +152,79 @@ fn invalid_proof_is_rejected() {
     let verifier_client = MockVerifierContractClient::new(&env, &verifier_id);
     verifier_client.set_should_verify(&false);
 
-    let (proof, public_signals) = offchain_register_fixture(&env);
+    let (proof, public_signals) = registration_fixture(&env, 0, 42, 7);
     let result = client.try_submit_proof(&proof, &public_signals);
 
     assert_submit_error(result, ContractError::InvalidProof);
     assert!(!client.has_commitment(&public_signals.commitment));
-    assert_eq!(client.get_root(), Some(public_signals.old_root));
+    assert_eq!(client.get_merkle_root(), public_signals.old_root);
 }
 
 #[test]
 fn stale_root_is_rejected() {
     let env = Env::default();
     let (_, client, _) = setup(&env);
-    let (proof, mut public_signals) = offchain_register_fixture(&env);
+    let (proof, mut public_signals) = registration_fixture(&env, 0, 42, 7);
     public_signals.old_root = bytes(&env, 1);
 
     let result = client.try_submit_proof(&proof, &public_signals);
 
     assert_submit_error(result, ContractError::RootMismatch);
     assert!(!client.has_commitment(&public_signals.commitment));
-    assert_eq!(client.get_root(), Some(bytes(&env, 0)));
+    assert_eq!(client.get_merkle_root(), bytes(&env, 0));
 }
 
 #[test]
 fn duplicate_commitment_is_rejected() {
     let env = Env::default();
     let (_, client, _) = setup(&env);
-    let (proof, public_signals) = offchain_register_fixture(&env);
+    let (proof, public_signals) = registration_fixture(&env, 0, 42, 7);
 
     client.submit_proof(&proof, &public_signals);
 
     let duplicate_result = client.try_submit_proof(&proof, &public_signals);
 
     assert_submit_error(duplicate_result, ContractError::DuplicateCommitment);
-    assert_eq!(client.get_root(), Some(public_signals.new_root));
+    assert_eq!(client.get_merkle_root(), public_signals.new_root);
+}
+
+#[test]
+fn root_progresses_across_multiple_registrations() {
+    let env = Env::default();
+    let (_, client, _) = setup(&env);
+    let (first_proof, first_public_signals) = registration_fixture(&env, 0, 42, 7);
+    let (second_proof, second_public_signals) = registration_fixture(&env, 42, 99, 8);
+
+    client.submit_proof(&first_proof, &first_public_signals);
+    client.submit_proof(&second_proof, &second_public_signals);
+
+    assert_eq!(client.get_merkle_root(), second_public_signals.new_root);
+    assert!(client.has_commitment(&first_public_signals.commitment));
+    assert!(client.has_commitment(&second_public_signals.commitment));
+}
+
+#[test]
+fn root_cannot_be_overridden_by_reinitializing() {
+    let env = Env::default();
+    let (_, client, verifier_id) = setup(&env);
+
+    let result = client.try_init(&verifier_id, &bytes(&env, 9));
+
+    assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized.into())));
+    assert_eq!(client.get_merkle_root(), bytes(&env, 0));
+}
+
+#[test]
+fn direct_root_override_entrypoint_is_rejected() {
+    let env = Env::default();
+    let (contract_id, client, _) = setup(&env);
+
+    let result = env.try_invoke_contract::<(), InvokeError>(
+        &contract_id,
+        &Symbol::new(&env, "set_merkle_root"),
+        vec![&env, bytes(&env, 9).into_val(&env)],
+    );
+
+    assert_eq!(result, Err(Ok(InvokeError::Abort)));
+    assert_eq!(client.get_merkle_root(), bytes(&env, 0));
 }

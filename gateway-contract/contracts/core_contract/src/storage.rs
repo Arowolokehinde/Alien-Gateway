@@ -3,21 +3,24 @@ use soroban_sdk::{contracttype, Address, BytesN, Env};
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    Root,
+    CurrentMerkleRoot,
     Verifier,
     Commitment(BytesN<32>),
 }
 
 pub fn is_initialized(env: &Env) -> bool {
-    env.storage().instance().has(&DataKey::Root) && env.storage().instance().has(&DataKey::Verifier)
+    env.storage().persistent().has(&DataKey::CurrentMerkleRoot)
+        && env.storage().instance().has(&DataKey::Verifier)
 }
 
-pub fn get_root(env: &Env) -> Option<BytesN<32>> {
-    env.storage().instance().get(&DataKey::Root)
+pub fn get_merkle_root(env: &Env) -> Option<BytesN<32>> {
+    env.storage().persistent().get(&DataKey::CurrentMerkleRoot)
 }
 
-pub fn set_root(env: &Env, root: &BytesN<32>) {
-    env.storage().instance().set(&DataKey::Root, root);
+pub fn set_merkle_root(env: &Env, root: &BytesN<32>) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::CurrentMerkleRoot, root);
 }
 
 pub fn get_verifier(env: &Env) -> Option<Address> {
