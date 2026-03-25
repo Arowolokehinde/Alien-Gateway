@@ -47,6 +47,94 @@ fn test_set_memo_and_resolve_flow() {
     assert_eq!(memo, Some(4242u64));
 }
 
+// ── resolve_stellar tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_resolve_stellar_returns_linked_address() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 10);
+
+    client.register(&owner, &hash);
+    client.add_stellar_address(&owner, &hash, &owner);
+
+    let resolved = client.resolve_stellar(&hash);
+    assert_eq!(resolved, owner);
+}
+
+#[test]
+fn test_resolve_stellar_linked_address_differs_from_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let payment_address = Address::generate(&env);
+    let hash = commitment(&env, 11);
+
+    client.register(&owner, &hash);
+    client.add_stellar_address(&owner, &hash, &payment_address);
+
+    let resolved = client.resolve_stellar(&hash);
+    assert_eq!(resolved, payment_address);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_resolve_stellar_not_found_for_unregistered_hash() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+
+    let hash = commitment(&env, 12);
+    client.resolve_stellar(&hash);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #3)")]
+fn test_resolve_stellar_no_address_linked_when_not_set() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 13);
+
+    client.register(&owner, &hash);
+    // do NOT call add_stellar_address
+    client.resolve_stellar(&hash);
+}
+
+#[test]
+#[should_panic]
+fn test_add_stellar_address_wrong_owner_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let hash = commitment(&env, 14);
+
+    client.register(&owner, &hash);
+    client.add_stellar_address(&attacker, &hash, &attacker);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_add_stellar_address_not_registered_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let caller = Address::generate(&env);
+    let hash = commitment(&env, 15);
+
+    client.add_stellar_address(&caller, &hash, &caller);
+}
+
 // ── SMT root tests ────────────────────────────────────────────────────────────
 
 #[test]

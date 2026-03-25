@@ -101,4 +101,45 @@ impl Contract {
     ) {
         AddressManager::remove_chain_address(env, caller, username_hash, chain);
     }
+
+    /// Link a primary Stellar address to a registered username hash.
+    /// Only the registered owner of the commitment may call this.
+    pub fn add_stellar_address(
+        env: Env,
+        caller: Address,
+        username_hash: BytesN<32>,
+        stellar_address: Address,
+    ) {
+        caller.require_auth();
+
+        // Verify the commitment is registered and caller is the owner.
+        let owner = Registration::get_owner(env.clone(), username_hash.clone())
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
+
+        if owner != caller {
+            panic_with_error!(&env, CoreError::NotFound);
+        }
+
+        env.storage().persistent().set(
+            &storage::DataKey::StellarAddress(username_hash),
+            &stellar_address,
+        );
+    }
+
+    /// Resolve a username hash to its primary linked Stellar address.
+    ///
+    /// Returns `NotFound` if the username hash is not registered.
+    /// Returns `NoAddressLinked` if registered but no primary Stellar address has been set.
+    pub fn resolve_stellar(env: Env, username_hash: BytesN<32>) -> Address {
+        // Step 1: verify the commitment is registered at all.
+        if Registration::get_owner(env.clone(), username_hash.clone()).is_none() {
+            panic_with_error!(&env, CoreError::NotFound);
+        }
+
+        // Step 2: return the linked primary Stellar address, or error if absent.
+        env.storage()
+            .persistent()
+            .get::<storage::DataKey, Address>(&storage::DataKey::StellarAddress(username_hash))
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NoAddressLinked))
+    }
 }

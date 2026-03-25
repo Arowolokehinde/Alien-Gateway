@@ -8,6 +8,8 @@ pub enum CoreError {
     NotFound = 1,
     /// The SMT root has not been set yet.
     RootNotSet = 2,
+    /// The username is registered but has no primary Stellar address linked.
+    NoAddressLinked = 3,
 }
 
 #[contracterror]
