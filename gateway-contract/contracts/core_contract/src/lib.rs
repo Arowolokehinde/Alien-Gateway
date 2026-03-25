@@ -1,70 +1,94 @@
 #![no_std]
 
-pub mod events;
-pub mod types;
-pub mod registration;
 pub mod address_manager;
+pub mod errors;
+pub mod events;
+pub mod registration;
+pub mod smt_root;
+pub mod storage;
+pub mod types;
+pub mod zk_verifier;
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, BytesN, Env,
-    String,
-};
-use types::ResolveData;
-use registration::Registration;
+#[cfg(test)]
+mod test;
+
 use address_manager::AddressManager;
+use errors::CoreError;
+use events::REGISTER_EVENT;
+use registration::Registration;
+use soroban_sdk::{contract, contractimpl, panic_with_error, Address, Bytes, BytesN, Env};
+use types::{ChainType, PublicSignals, ResolveData};
 
 #[contract]
 pub struct Contract;
 
-#[contracttype]
-#[derive(Clone)]
-pub enum DataKey {
-    Resolver(BytesN<32>),
-}
-
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ResolverError {
-    NotFound = 1,
-}
-
 #[contractimpl]
 impl Contract {
-    // ============================================
-    // Resolver Functions
-    // ============================================
+    pub fn get_smt_root(env: Env) -> BytesN<32> {
+        smt_root::SmtRoot::get_root(env.clone())
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::RootNotSet))
+    }
 
-    pub fn register_resolver(env: Env, commitment: BytesN<32>, wallet: Address, memo: Option<u64>) {
-        let key = DataKey::Resolver(commitment);
-        let data = ResolveData { wallet, memo };
+    pub fn register_resolver(
+        env: Env,
+        caller: Address,
+        commitment: BytesN<32>,
+        proof: Bytes,
+        public_signals: PublicSignals,
+    ) {
+        caller.require_auth();
 
+        let key = storage::DataKey::Resolver(commitment.clone());
+        if env.storage().persistent().has(&key) {
+            panic_with_error!(&env, CoreError::DuplicateCommitment);
+        }
+
+        let current_root = smt_root::SmtRoot::get_root(env.clone())
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::RootNotSet));
+        if public_signals.old_root != current_root {
+            panic_with_error!(&env, CoreError::StaleRoot);
+        }
+
+        if !zk_verifier::ZkVerifier::verify_groth16_proof(&env, &proof, &public_signals) {
+            panic_with_error!(&env, CoreError::InvalidProof);
+        }
+
+        let data = ResolveData {
+            wallet: caller.clone(),
+            memo: None,
+        };
         env.storage().persistent().set(&key, &data);
+
+        smt_root::SmtRoot::update_root(&env, public_signals.new_root);
+
+        #[allow(deprecated)]
+        env.events()
+            .publish((REGISTER_EVENT,), (commitment, caller));
     }
 
     pub fn set_memo(env: Env, commitment: BytesN<32>, memo_id: u64) {
-        let key = DataKey::Resolver(commitment);
         let mut data = env
             .storage()
             .persistent()
-            .get::<DataKey, ResolveData>(&key)
-            .unwrap_or_else(|| panic_with_error!(&env, ResolverError::NotFound));
+            .get::<storage::DataKey, ResolveData>(&storage::DataKey::Resolver(commitment.clone()))
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
         data.memo = Some(memo_id);
-        env.storage().persistent().set(&key, &data);
+        env.storage()
+            .persistent()
+            .set(&storage::DataKey::Resolver(commitment), &data);
     }
 
     pub fn resolve(env: Env, commitment: BytesN<32>) -> (Address, Option<u64>) {
-        let key = DataKey::Resolver(commitment);
-
-        match env.storage().persistent().get::<DataKey, ResolveData>(&key) {
+        match env
+            .storage()
+            .persistent()
+            .get::<storage::DataKey, ResolveData>(&storage::DataKey::Resolver(commitment))
+        {
             Some(data) => (data.wallet, data.memo),
-            None => panic_with_error!(&env, ResolverError::NotFound),
+            None => panic_with_error!(&env, CoreError::NotFound),
         }
     }
-
-    // ============================================
-    // Registration Functions
-    // ============================================
 
     pub fn register(env: Env, caller: Address, commitment: BytesN<32>) {
         Registration::register(env, caller, commitment);
@@ -74,48 +98,62 @@ impl Contract {
         Registration::get_owner(env, commitment)
     }
 
-    // ============================================
-    // Address Manager Functions
-    // ============================================
-
-    pub fn init_address_manager(env: Env, owner: Address) {
-        AddressManager::init(&env, owner);
-    }
-
-    pub fn set_master_stellar_address(
+    pub fn add_chain_address(
         env: Env,
         caller: Address,
-        commitment: BytesN<32>,
-        stellar_address: String,
+        username_hash: BytesN<32>,
+        chain: ChainType,
+        address: Bytes,
     ) {
-        AddressManager::set_master_stellar_address(&env, caller, commitment, stellar_address);
+        AddressManager::add_chain_address(env, caller, username_hash, chain, address);
+    }
+
+    pub fn get_chain_address(
+        env: Env,
+        username_hash: BytesN<32>,
+        chain: ChainType,
+    ) -> Option<Bytes> {
+        AddressManager::get_chain_address(env, username_hash, chain)
+    }
+
+    pub fn remove_chain_address(
+        env: Env,
+        caller: Address,
+        username_hash: BytesN<32>,
+        chain: ChainType,
+    ) {
+        AddressManager::remove_chain_address(env, caller, username_hash, chain);
     }
 
     pub fn add_stellar_address(
         env: Env,
         caller: Address,
-        commitment: BytesN<32>,
-        stellar_address: String,
+        username_hash: BytesN<32>,
+        stellar_address: Address,
     ) {
-        AddressManager::add_stellar_address(&env, caller, commitment, stellar_address);
+        caller.require_auth();
+
+        let owner = Registration::get_owner(env.clone(), username_hash.clone())
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
+
+        if owner != caller {
+            panic_with_error!(&env, CoreError::NotFound);
+        }
+
+        env.storage().persistent().set(
+            &storage::DataKey::StellarAddress(username_hash),
+            &stellar_address,
+        );
     }
 
-    pub fn register_address(env: Env, caller: Address, address: Address) {
-        AddressManager::register_address(&env, caller, address);
-    }
+    pub fn resolve_stellar(env: Env, username_hash: BytesN<32>) -> Address {
+        if Registration::get_owner(env.clone(), username_hash.clone()).is_none() {
+            panic_with_error!(&env, CoreError::NotFound);
+        }
 
-    pub fn get_master(env: Env) -> Option<String> {
-        AddressManager::get_master(&env)
-    }
-
-    pub fn get_stellar_address(env: Env, commitment: BytesN<32>) -> Option<String> {
-        AddressManager::get_stellar_address(&env, commitment)
-    }
-
-    pub fn is_address_registered(env: Env, address: Address) -> bool {
-        AddressManager::is_registered(&env, address)
+        env.storage()
+            .persistent()
+            .get::<storage::DataKey, Address>(&storage::DataKey::StellarAddress(username_hash))
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NoAddressLinked))
     }
 }
-
-#[cfg(test)]
-mod test;
