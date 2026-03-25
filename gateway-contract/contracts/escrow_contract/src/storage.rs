@@ -1,5 +1,5 @@
 use crate::errors::EscrowError;
-use crate::types::{DataKey, LegacyVault, ScheduledPayment, VaultConfig, VaultState};
+use crate::types::{AutoPay, DataKey, LegacyVault, ScheduledPayment, VaultConfig, VaultState};
 use soroban_sdk::{BytesN, Env};
 
 /// Reads a vault's immutable configuration from persistent storage.
@@ -76,4 +76,41 @@ pub fn write_scheduled_payment(env: &Env, id: u32, payment: &ScheduledPayment) {
     env.storage()
         .persistent()
         .set(&DataKey::ScheduledPayment(id), payment);
+}
+
+/// Increments the global auto-pay counter and returns the previous ID.
+///
+/// ### Errors
+/// - Returns `EscrowError::AutoPayCounterOverflow` if the counter reaches `u32::MAX`.
+pub fn increment_auto_pay_id(env: &Env) -> Result<u32, EscrowError> {
+    let id: u32 = env
+        .storage()
+        .instance()
+        .get(&DataKey::AutoPayCounter)
+        .unwrap_or(0);
+
+    let next = id
+        .checked_add(1)
+        .ok_or(EscrowError::AutoPayCounterOverflow)?;
+
+    env.storage()
+        .instance()
+        .set(&DataKey::AutoPayCounter, &next);
+
+    Ok(id)
+}
+
+/// Records an auto-pay rule in persistent storage under the composite key (vault, rule_id).
+pub fn write_auto_pay(env: &Env, commitment: &BytesN<32>, rule_id: u32, auto_pay: &AutoPay) {
+    env.storage().persistent().set(
+        &DataKey::AutoPay(commitment.clone(), rule_id as u64),
+        auto_pay,
+    );
+}
+
+/// Reads an auto-pay rule from persistent storage by vault commitment and rule ID.
+pub fn read_auto_pay(env: &Env, commitment: &BytesN<32>, rule_id: u32) -> Option<AutoPay> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::AutoPay(commitment.clone(), rule_id as u64))
 }

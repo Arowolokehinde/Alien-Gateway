@@ -14,6 +14,8 @@ pub enum DataKey {
     PaymentCounter,
     /// Key for an auto-payment rule, indexed by the source vault's commitment and a rule ID.
     AutoPay(BytesN<32>, u64),
+    /// Key for the auto-incrementing auto-pay counter in instance storage.
+    AutoPayCounter,
     /// Legacy key for a vault record (pre-split architecture). Kept for backward compatibility.
     Vault(BytesN<32>),
 }
