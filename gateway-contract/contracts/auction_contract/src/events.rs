@@ -39,11 +39,18 @@ pub struct AuctionClosedEvent {
 pub struct UsernameClaimedEvent {
     #[topic]
     pub username_hash: BytesN<32>,
-    pub owner: Address,
+    pub claimer: Address,
 }
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuctionClosedEvent {
+    #[topic]
+    pub username_hash: BytesN<32>,
+    pub winner: Option<Address>,
+    pub winning_bid: u128,
+}
+
 pub struct BidRefundedEvent {
     #[topic]
     pub username_hash: BytesN<32>,
@@ -72,21 +79,21 @@ pub fn emit_bid_placed(env: &Env, username_hash: &BytesN<32>, bidder: &Address, 
 pub fn emit_auction_closed(
     env: &Env,
     username_hash: &BytesN<32>,
-    winner: &Address,
-    winning_bid: i128,
+    winner: Option<Address>,
+    winning_bid: u128,
 ) {
     AuctionClosedEvent {
         username_hash: username_hash.clone(),
-        winner: winner.clone(),
+        winner,
         winning_bid,
     }
     .publish(env);
 }
 
-pub fn emit_username_claimed(env: &Env, username_hash: &BytesN<32>, owner: &Address) {
+pub fn emit_username_claimed(env: &Env, username_hash: &BytesN<32>, claimer: &Address) {
     UsernameClaimedEvent {
         username_hash: username_hash.clone(),
-        owner: owner.clone(),
+        claimer: claimer.clone(),
     }
     .publish(env);
 }
