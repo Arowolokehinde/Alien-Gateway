@@ -28,6 +28,59 @@ fn commitment(env: &Env, seed: u8) -> BytesN<32> {
     BytesN::from_array(env, &[seed; 32])
 }
 
+// ── registration tests ───────────────────────────────────────────────────────
+
+#[test]
+fn test_register_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 10);
+
+    client.register(&owner, &hash);
+
+    let stored_owner = client.get_owner(&hash);
+    assert_eq!(stored_owner, Some(owner));
+}
+
+#[test]
+#[should_panic(expected = "Commitment already registered")]
+fn test_register_duplicate_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 11);
+
+    client.register(&owner, &hash);
+    client.register(&owner, &hash);
+}
+
+#[test]
+#[should_panic]
+fn test_register_requires_auth() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 12);
+
+    client.register(&owner, &hash);
+}
+
+#[test]
+fn test_get_owner_returns_none_for_unknown() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+
+    let hash = commitment(&env, 13);
+    let stored_owner = client.get_owner(&hash);
+    assert_eq!(stored_owner, None);
+}
+
 fn dummy_proof(env: &Env) -> Bytes {
     Bytes::from_slice(env, &[1u8; 64])
 }
