@@ -2,8 +2,10 @@
   "name": "zk",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "scripts/verify_proof.ts",
   "scripts": {
+    "verify:proof": "ts-node scripts/verify_proof.ts",
+    "test:verify": "ts-node tests/test_verify_proof.ts",
   "test": "node tests/test_update_proof.js && node tests/test_non_inclusion_proof.js",
   "test:update_proof": "node tests/test_update_proof.js",
   "test:non_inclusion": "node tests/test_non_inclusion_proof.js",
