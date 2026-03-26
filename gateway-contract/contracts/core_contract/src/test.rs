@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use crate::smt_root::SmtRoot;
-use crate::types::{AddressMetadata, ChainType, PublicSignals};
+use crate::types::{AddressMetadata, ChainType, PrivacyMode, PublicSignals};
 use crate::{Contract, ContractClient};
 use escrow_contract::types::{
     AutoPay, ScheduledPayment as EscrowScheduledPayment, VaultConfig, VaultState,
@@ -234,6 +234,62 @@ fn test_set_memo_and_resolve_flow() {
     let (resolved_wallet, memo) = client.resolve(&hash);
     assert_eq!(resolved_wallet, caller);
     assert_eq!(memo, Some(4242u64));
+}
+
+#[test]
+fn test_privacy_mode_resolve_shields_registered_wallet() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, root) = setup_with_root(&env);
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 40);
+    let new_root = BytesN::from_array(&env, &[41u8; 32]);
+
+    client.register(&owner, &hash);
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &PublicSignals {
+            old_root: root,
+            new_root,
+        },
+    );
+
+    assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Normal);
+    assert_eq!(client.resolve(&hash), (owner.clone(), None));
+
+    client.set_privacy_mode(&hash, &PrivacyMode::Private);
+
+    assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Private);
+    assert_eq!(client.resolve(&hash), (contract_id, None));
+}
+
+#[test]
+fn test_privacy_mode_can_be_restored_to_normal() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, root) = setup_with_root(&env);
+    let owner = Address::generate(&env);
+    let hash = commitment(&env, 42);
+    let new_root = BytesN::from_array(&env, &[43u8; 32]);
+
+    client.register(&owner, &hash);
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &PublicSignals {
+            old_root: root,
+            new_root,
+        },
+    );
+
+    client.set_privacy_mode(&hash, &PrivacyMode::Private);
+    assert_eq!(client.resolve(&hash), (contract_id, None));
+
+    client.set_privacy_mode(&hash, &PrivacyMode::Normal);
+    assert_eq!(client.resolve(&hash), (owner, None));
 }
 
 // ── resolve_stellar tests ─────────────────────────────────────────────────────

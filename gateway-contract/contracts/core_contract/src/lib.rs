@@ -17,7 +17,7 @@ use errors::CoreError;
 use events::{REGISTER_EVENT, TRANSFER_EVENT};
 use registration::Registration;
 use soroban_sdk::{contract, contractimpl, panic_with_error, Address, Bytes, BytesN, Env};
-use types::{ChainType, PublicSignals, ResolveData};
+use types::{ChainType, PrivacyMode, PublicSignals, ResolveData};
 
 #[contract]
 pub struct Contract;
@@ -79,13 +79,28 @@ impl Contract {
             .set(&storage::DataKey::Resolver(commitment), &data);
     }
 
+    pub fn set_privacy_mode(env: Env, username_hash: BytesN<32>, mode: PrivacyMode) {
+        AddressManager::set_privacy_mode(env, username_hash, mode);
+    }
+
+    pub fn get_privacy_mode(env: Env, username_hash: BytesN<32>) -> PrivacyMode {
+        AddressManager::get_privacy_mode(env, username_hash)
+    }
+
     pub fn resolve(env: Env, commitment: BytesN<32>) -> (Address, Option<u64>) {
         match env
             .storage()
             .persistent()
-            .get::<storage::DataKey, ResolveData>(&storage::DataKey::Resolver(commitment))
+            .get::<storage::DataKey, ResolveData>(&storage::DataKey::Resolver(commitment.clone()))
         {
-            Some(data) => (data.wallet, data.memo),
+            Some(data) => {
+                if AddressManager::get_privacy_mode(env.clone(), commitment) == PrivacyMode::Private
+                {
+                    (env.current_contract_address(), data.memo)
+                } else {
+                    (data.wallet, data.memo)
+                }
+            }
             None => panic_with_error!(&env, CoreError::NotFound),
         }
     }
