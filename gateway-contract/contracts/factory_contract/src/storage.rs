@@ -60,7 +60,5 @@ pub fn get_config(env: &Env) -> Option<DeployConfig> {
 }
 
 pub fn set_config(env: &Env, config: &DeployConfig) {
-    env.storage()
-        .persistent()
-        .set(&DataKey::Config, config);
+    env.storage().persistent().set(&DataKey::Config, config);
 }
