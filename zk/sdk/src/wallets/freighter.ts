@@ -1,34 +1,17 @@
+import type * as FreighterApiModule from "@stellar/freighter-api";
 import type { WalletAdapter } from "./shared";
 import { WalletDetectionError, assertBrowserEnvironment } from "./shared";
 
-interface FreighterErrorResponse {
-  error?: string;
-}
+export type FreighterApi = Pick<
+  typeof FreighterApiModule,
+  "requestAccess" | "getPublicKey" | "getAddress" | "signTransaction"
+>;
 
-interface FreighterAddressResponse {
-  address?: string;
-  publicKey?: string;
-  error?: string;
-}
-
-interface FreighterSignResponse {
-  signedTxXdr?: string;
-  signedXDR?: string;
-  xdr?: string;
-  error?: string;
-}
-
-export interface FreighterApi {
-  isConnected?(): Promise<boolean> | boolean;
-  isAllowed?(): Promise<boolean> | boolean;
-  requestAccess(): Promise<string | FreighterErrorResponse>;
-  getPublicKey?(): Promise<string | FreighterAddressResponse>;
-  getAddress?(): Promise<string | FreighterAddressResponse>;
-  signTransaction(
-    xdr: string,
-    options?: Record<string, unknown>,
-  ): Promise<string | FreighterSignResponse>;
-}
+type FreighterRequestAccessResult = Awaited<ReturnType<FreighterApi["requestAccess"]>>;
+type FreighterAddressResult =
+  | Awaited<ReturnType<NonNullable<FreighterApi["getPublicKey"]>>>
+  | Awaited<ReturnType<NonNullable<FreighterApi["getAddress"]>>>;
+type FreighterSignResult = Awaited<ReturnType<FreighterApi["signTransaction"]>>;
 
 type BrowserGlobal = typeof globalThis & { window?: unknown };
 
@@ -107,7 +90,7 @@ export class FreighterAdapter implements WalletAdapter {
 }
 
 function extractFreighterString(
-  value: string | FreighterErrorResponse | FreighterAddressResponse | undefined,
+  value: FreighterRequestAccessResult | FreighterAddressResult | undefined,
   fallbackMessage: string,
 ): string {
   if (typeof value === "string") {
@@ -130,7 +113,7 @@ function extractFreighterString(
 }
 
 function extractSignedXdr(
-  value: string | FreighterSignResponse,
+  value: FreighterSignResult,
   fallbackMessage: string,
 ): string {
   if (typeof value === "string") {
