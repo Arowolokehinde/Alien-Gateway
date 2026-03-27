@@ -37,7 +37,7 @@ fi
 # Run Rust tests before push (gateway-contract)
 if [ -d "gateway-contract" ]; then
     echo "🦀 Running Rust tests..."
-    cd gateway-contract && cargo test
+    cd gateway-contract && export PATH="$HOME/.cargo/bin:$PATH" && cargo test
     if [ $? -ne 0 ]; then
         echo "❌ Rust tests failed. Fix them before pushing."
         exit 1
