@@ -388,7 +388,7 @@ fn test_create_vault_success() {
 }
 
 #[test]
-fn test_create_vault_already_exists() {
+fn test_create_vault_duplicate_panics() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -406,7 +406,7 @@ fn test_create_vault_already_exists() {
 
 #[test]
 #[should_panic]
-fn test_create_vault_not_owner() {
+fn test_create_vault_non_owner_panics() {
     let env = Env::default();
     // No mock_all_auths: a caller who is NOT the registered owner cannot create
     // the vault because owner.require_auth() will reject the transaction.
@@ -436,6 +436,93 @@ fn test_create_vault_not_owner() {
 
     // create_vault calls owner.require_auth() → panics because no auth is mocked.
     client.create_vault(&commitment, &token);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST #5: Vault Creation Event Emission
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_create_vault_emits_vault_crt_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, escrow_id, _owner, token, commitment) = setup_with_registration(&env, 0xDD);
+
+    client.create_vault(&commitment, &token);
+
+    // Verify event was published
+    let events = env.events().all();
+
+    // Filter for events from the escrow contract
+    let mut escrow_event_count = 0;
+    for (event_contract, _, _) in events.iter() {
+        if event_contract == escrow_id {
+            escrow_event_count += 1;
+        }
+    }
+
+    assert!(
+        escrow_event_count > 0,
+        "At least one event should be emitted from escrow contract"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST #6: Registration Contract Not Initialized
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_create_vault_registration_not_initialized_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Register escrow contract WITHOUT initializing it
+    let escrow_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &escrow_id);
+
+    let commitment = BytesN::from_array(&env, &[0xEEu8; 32]);
+    let token = Address::generate(&env);
+
+    // Try to create vault without calling initialize
+    // This should fail because read_registration_contract returns None
+    let result = client.try_create_vault(&commitment, &token);
+    assert!(matches!(
+        result,
+        Err(Ok(err)) if err == Error::from_contract_error(EscrowError::CommitmentNotRegistered as u32)
+    ));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST #7: Commitment Not Found in Registration
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_create_vault_unregistered_commitment_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let reg_id = env.register(MockRegistrationContract, ());
+
+    let commitment = BytesN::from_array(&env, &[0xFFu8; 32]);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract(token_admin);
+
+    // Do NOT set_owner for this commitment in the registration contract
+    // This simulates the commitment being unregistered
+
+    let escrow_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &escrow_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &reg_id);
+
+    // Try to create vault for unregistered commitment
+    // Registration::get_owner will return None
+    let result = client.try_create_vault(&commitment, &token);
+    assert!(matches!(
+        result,
+        Err(Ok(err)) if err == Error::from_contract_error(EscrowError::CommitmentNotRegistered as u32)
+    ));
 }
 
 #[test]
