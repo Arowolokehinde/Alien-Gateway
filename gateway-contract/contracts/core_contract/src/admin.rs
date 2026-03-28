@@ -55,4 +55,28 @@ impl Admin {
         smt_root::SmtRoot::get_root(env.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::RootNotSet))
     }
+
+    /// Updates the SMT root as an authenticated public entry point.
+    ///
+    /// Allows the contract owner to update the Sparse Merkle Tree root. This is used when
+    /// off-chain ZK proofs are verified and a new root needs to be committed on-chain.
+    /// Only the contract owner can authorize this call.
+    ///
+    /// ### Arguments
+    /// - `env`: The Soroban contract environment.
+    /// - `new_root`: The 32-byte new SMT root to set.
+    ///
+    /// ### Errors
+    /// - `NotFound`: If the contract owner has not been initialized.
+    /// - Panics if the caller is not authorized by the owner.
+    ///
+    /// ### Events
+    /// - Emits `ROOT_UPDATED` event with (old_root, new_root).
+    pub fn update_smt_root(env: Env, new_root: BytesN<32>) {
+        let owner = storage::get_owner(&env)
+            .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
+        owner.require_auth();
+
+        smt_root::SmtRoot::update_root(&env, new_root);
+    }
 }
