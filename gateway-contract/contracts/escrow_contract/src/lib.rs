@@ -65,7 +65,7 @@ impl EscrowContract {
         let owner: Option<Address> = env.invoke_contract(
             &registration,
             &Symbol::new(&env, "get_owner"),
-            vec![&env, commitment.clone().into_val(&env)],
+            vec![&env, commitment.into_val(&env)],
         );
         let owner =
             owner.unwrap_or_else(|| panic_with_error!(&env, EscrowError::CommitmentNotRegistered));
@@ -101,6 +101,46 @@ impl EscrowContract {
 
         // 7. Emit VAULT_CRT event with fields in order: (commitment, token, owner).
         Events::vault_crt(&env, commitment, token, owner);
+    }
+
+    /// Deposits tokens into an existing vault and increases its internal balance.
+    ///
+    /// The vault owner must authorize this call. Tokens are transferred from the
+    /// owner to this contract before the vault balance is updated.
+    ///
+    /// ### Errors
+    /// - `InvalidAmount`: If `amount <= 0`.
+    /// - `VaultNotFound`: If the vault does not exist.
+    /// - `VaultInactive`: If the vault is cancelled/inactive.
+    pub fn deposit(env: Env, commitment: BytesN<32>, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(&env, EscrowError::InvalidAmount);
+        }
+
+        let config = read_vault_config(&env, &commitment)
+            .unwrap_or_else(|| panic_with_error!(&env, EscrowError::VaultNotFound));
+        let mut state = read_vault_state(&env, &commitment)
+            .unwrap_or_else(|| panic_with_error!(&env, EscrowError::VaultNotFound));
+
+        config.owner.require_auth();
+
+        if !state.is_active {
+            panic_with_error!(&env, EscrowError::VaultInactive);
+        }
+
+        // Transfer tokens from caller to the contract first
+        let token_client = token::Client::new(&env, &config.token);
+        token_client.transfer(&config.owner, env.current_contract_address(), &amount);
+
+        // Update state safely
+        state.balance = state
+            .balance
+            .checked_add(amount)
+            .expect("vault balance overflow");
+        write_vault_state(&env, &commitment, &state);
+
+        // Emit DEPOSIT event.
+        Events::deposit(&env, commitment, amount, state.balance);
     }
 
     /// Schedules a payment from one vault to another.
