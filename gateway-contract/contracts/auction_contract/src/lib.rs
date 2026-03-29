@@ -65,6 +65,47 @@ impl AuctionContract {
         indexed::place_bid(&env, id, bidder, amount)
     }
 
+    pub fn refund_bid(env: Env, id: u32, bidder: Address) {
+        bidder.require_auth();
+
+        let status = storage::auction_get_status(&env, id);
+        if status != types::AuctionStatus::Closed {
+            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotClosed);
+        }
+
+        let highest_bidder = storage::auction_get_highest_bidder(&env, id);
+        if highest_bidder
+            .as_ref()
+            .map(|h| h == &bidder)
+            .unwrap_or(false)
+        {
+            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotWinner);
+        }
+
+        if storage::auction_is_bid_refunded(&env, id, &bidder) {
+            soroban_sdk::panic_with_error!(&env, errors::AuctionError::AlreadyClaimed);
+        }
+
+        let refund_amount = storage::auction_get_outbid_amount(&env, id, &bidder);
+        if refund_amount <= 0 {
+            soroban_sdk::panic_with_error!(&env, errors::AuctionError::InvalidState);
+        }
+
+        let asset = storage::auction_get_asset(&env, id);
+        let token = soroban_sdk::token::Client::new(&env, &asset);
+
+        storage::auction_set_bid_refunded(&env, id, &bidder);
+        storage::auction_set_outbid_amount(&env, id, &bidder, 0);
+
+        token.transfer(&env.current_contract_address(), &bidder, &refund_amount);
+        events::emit_bid_refunded(
+            &env,
+            &BytesN::from_array(&env, &[0u8; 32]),
+            &bidder,
+            refund_amount,
+        );
+    }
+
     pub fn close_auction_by_id(env: Env, id: u32) {
         indexed::close_auction_by_id(&env, id)
     }
