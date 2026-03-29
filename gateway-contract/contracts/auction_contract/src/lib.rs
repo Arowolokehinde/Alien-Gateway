@@ -1,61 +1,106 @@
 #![no_std]
+use soroban_sdk::{contract, contractimpl, vec, Address, BytesN, Env, IntoVal, Symbol};
+pub mod errors;
+pub mod events;
+pub mod storage;
+pub mod types;
 
-mod events;
-
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
-
-use events::publish_bid_refunded_event;
-
-#[contract]
-pub struct Auction;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AuctionState {
-    pub bidder: Address,
-    pub amount: i128,
-}
-
-#[contractimpl]
-impl Auction {
-    /// Place a bid for an auction identified by `auction_id`.
-    /// If there's a previous highest bidder, emit a `BID_RFDN` event
-    /// before attempting the refund token transfer.
-    pub fn place_bid(env: Env, auction_id: Symbol, bidder: Address, amount: i128) {
-        bidder.require_auth();
-
-        if amount <= 0 {
-            panic!("amount must be positive");
-        }
-
-        // Load existing highest bid if any
-        let existing: Option<AuctionState> = env.storage().persistent().get(&auction_id);
-
-        if let Some(prev) = existing {
-            if amount <= prev.amount {
-                panic!("bid must be higher than current highest bid");
-            }
-
-            // Emit refund event before performing token transfer
-            publish_bid_refunded_event(&env, prev.bidder.clone(), prev.amount);
-
-            // Attempt refund token transfer if token address configured in instance storage
-            let token_addr: Option<Address> = env.storage().instance().get(&Symbol::new(&env, "bid_token"));
-            if let Some(tkn) = token_addr {
-                let token_client = token::Client::new(&env, &tkn);
-                // Contract is the sender of refund transfers (for tests this will be mocked)
-                token_client.transfer(&env.current_contract_address(), &prev.bidder, &prev.amount);
-            }
-        }
-
-        // Store new highest bid
-        let new_state = AuctionState { bidder: bidder.clone(), amount };
-        env.storage().persistent().set(&auction_id, &new_state);
-    }
+// Ensure event symbols are linked from the main
+// contract entrypoint module.
+use crate::events::{AUCTION_CLOSED, AUCTION_CREATED, BID_PLACED, BID_REFUNDED, USERNAME_CLAIMED};
+#[allow(dead_code)]
+fn _touch_event_symbols() {
+    let _ = (
+        AUCTION_CREATED,
+        BID_PLACED,
+        AUCTION_CLOSED,
+        USERNAME_CLAIMED,
+        BID_REFUNDED,
+    );
 }
 
 #[cfg(test)]
 mod test;
+
+#[contract]
+pub struct AuctionContract;
+
+#[contractimpl]
+impl AuctionContract {
+    pub fn close_auction(
+        env: Env,
+        username_hash: BytesN<32>,
+    ) -> Result<(), crate::errors::AuctionError>
+    {
+        let status = storage::get_status(&env);
+
+        // Reject if status is not Open
+        if status != types::AuctionStatus::Open {
+            return Err(crate::errors::AuctionError::AuctionNotOpen);
+        }
+
+        // Get current ledger timestamp and end time
+        let current_time = env.ledger().timestamp();
+        let end_time = storage::get_end_time(&env);
+        // Reject if timestamp < end_time
+        if current_time < end_time {
+            return Err(crate::errors::AuctionError::AuctionNotClosed);
+        }
+
+        // Set status to Closed
+        storage::set_status(&env, types::AuctionStatus::Closed);
+        // Get winner and winning bid
+        let winner = storage::get_highest_bidder(&env);
+        let winning_bid = storage::get_highest_bid(&env);
+        // Emit AUCTION_CLOSED event with winner and winning bid
+        events::emit_auction_closed(&env, &username_hash, winner.clone(), winning_bid);
+        Ok(())
+    }
+
+    pub fn claim_username(
+        env: Env,
+        username_hash: BytesN<32>,
+        claimer: Address,
+    ) -> Result<(), crate::errors::AuctionError>
+    {
+        claimer.require_auth();
+
+        let status = storage::get_status(&env);
+
+        if status == types::AuctionStatus::Claimed {
+            return Err(crate::errors::AuctionError::AlreadyClaimed);
+        }
+
+        if status != types::AuctionStatus::Closed {
+            return Err(crate::errors::AuctionError::NotClosed);
+        }
+
+        let highest_bidder = storage::get_highest_bidder(&env);
+        if !highest_bidder.map(|h| h == claimer).unwrap_or(false) {
+            return Err(crate::errors::AuctionError::NotWinner);
+        }
+
+        // Set status to Claimed
+        storage::set_status(&env, types::AuctionStatus::Claimed);
+        // Call factory_contract.deploy_username(username_hash, claimer)
+        let factory = storage::get_factory_contract(&env);
+        if factory.is_none() {
+            return Err(crate::errors::AuctionError::NoFactoryContract);
+        }
+
+        let factory_addr = factory.ok_or(crate::errors::AuctionError::NoFactoryContract)?;
+        env.invoke_contract::<()>(
+            &factory_addr,
+            &Symbol::new(&env, "deploy_username"),
+            vec![&env, username_hash.into_val(&env), claimer.into_val(&env)],
+        );
+
+        // Emit USERNAME_CLAIMED event
+        events::emit_username_claimed(&env, &username_hash, &claimer);
+        Ok(())
+    }
+}
+
 #[contractimpl]
 impl AuctionContract {
     pub fn create_auction(
@@ -82,69 +127,23 @@ impl AuctionContract {
 
     pub fn place_bid(env: Env, id: u32, bidder: Address, amount: i128) {
         bidder.require_auth();
-        let status = storage::auction_get_status(&env, id);
-        if status != types::AuctionStatus::Open {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::AuctionNotOpen);
-        }
-
         let end_time = storage::auction_get_end_time(&env, id);
         if env.ledger().timestamp() >= end_time {
             soroban_sdk::panic_with_error!(&env, errors::AuctionError::AuctionNotOpen);
         }
-
         let min_bid = storage::auction_get_min_bid(&env, id);
         let highest_bid = storage::auction_get_highest_bid(&env, id);
         if amount < min_bid || amount <= highest_bid {
             soroban_sdk::panic_with_error!(&env, errors::AuctionError::BidTooLow);
         }
-
         let asset = storage::auction_get_asset(&env, id);
         let token = soroban_sdk::token::Client::new(&env, &asset);
-
-        // Accept bid funds into contract.
         token.transfer(&bidder, env.current_contract_address(), &amount);
-
         if let Some(prev_bidder) = storage::auction_get_highest_bidder(&env, id) {
-            // Record outbid amount for later refund by the bidder.
-            let prev_amount = highest_bid;
-            let existing_outbid = storage::auction_get_outbid_amount(&env, id, &prev_bidder);
-            storage::auction_set_outbid_amount(&env, id, &prev_bidder, existing_outbid + prev_amount);
+            token.transfer(&env.current_contract_address(), &prev_bidder, &highest_bid);
         }
-
         storage::auction_set_highest_bidder(&env, id, &bidder);
         storage::auction_set_highest_bid(&env, id, amount);
-    }
-
-    pub fn refund_bid(env: Env, id: u32, bidder: Address) {
-        bidder.require_auth();
-
-        let status = storage::auction_get_status(&env, id);
-        if status != types::AuctionStatus::Closed {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotClosed);
-        }
-
-        let highest_bidder = storage::auction_get_highest_bidder(&env, id);
-        if highest_bidder.as_ref().map(|h| h == &bidder).unwrap_or(false) {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotWinner);
-        }
-
-        if storage::auction_is_bid_refunded(&env, id, &bidder) {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::AlreadyClaimed);
-        }
-
-        let refund_amount = storage::auction_get_outbid_amount(&env, id, &bidder);
-        if refund_amount <= 0 {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::InvalidState);
-        }
-
-        let asset = storage::auction_get_asset(&env, id);
-        let token = soroban_sdk::token::Client::new(&env, &asset);
-
-        storage::auction_set_bid_refunded(&env, id, &bidder);
-        storage::auction_set_outbid_amount(&env, id, &bidder, 0);
-
-        token.transfer(&env.current_contract_address(), &bidder, &refund_amount);
-        events::emit_bid_refunded(&env, &BytesN::from_array(&env, &[0u8; 32]), &bidder, refund_amount);
     }
 
     pub fn close_auction_by_id(env: Env, id: u32) {
