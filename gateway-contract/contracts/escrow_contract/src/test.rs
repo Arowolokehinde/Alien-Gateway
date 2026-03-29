@@ -1105,3 +1105,49 @@ fn test_cancel_vault_non_owner_panics() {
         }])
         .cancel_vault(&from);
 }
+
+// ─── get_auto_pay_count tests ─────────────────────────────────────────────────
+
+/// Returns 0 when no auto-pay rules have been created.
+#[test]
+fn test_get_auto_pay_count_returns_zero_before_any_rules() {
+    let env = Env::default();
+    let (_, client, _, _, _, _) = setup_test(&env);
+
+    assert_eq!(client.get_auto_pay_count(), 0);
+}
+
+/// Returns 1 after a single auto-pay rule is registered.
+#[test]
+fn test_get_auto_pay_count_increments_after_setup() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
+
+    create_vault(&env, &contract_id, &from, &Address::generate(&env), &token, 1000);
+
+    assert_eq!(client.get_auto_pay_count(), 0);
+
+    client.setup_auto_pay(&from, &to, &100, &86_400);
+
+    assert_eq!(client.get_auto_pay_count(), 1);
+}
+
+/// Count grows monotonically with each additional rule.
+#[test]
+fn test_get_auto_pay_count_increments_with_multiple_rules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
+
+    create_vault(&env, &contract_id, &from, &Address::generate(&env), &token, 1000);
+
+    client.setup_auto_pay(&from, &to, &100, &86_400);
+    assert_eq!(client.get_auto_pay_count(), 1);
+
+    client.setup_auto_pay(&from, &to, &200, &43_200);
+    assert_eq!(client.get_auto_pay_count(), 2);
+
+    client.setup_auto_pay(&from, &to, &50, &3_600);
+    assert_eq!(client.get_auto_pay_count(), 3);
+}
