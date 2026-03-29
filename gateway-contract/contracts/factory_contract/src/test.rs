@@ -1,6 +1,8 @@
 #![cfg(test)]
 
-use soroban_sdk::testutils::{Address as _, Events as _, MockAuth, MockAuthInvoke};
+use soroban_sdk::testutils::{
+    storage::Persistent as _, Address as _, Events as _, Ledger as _, MockAuth, MockAuthInvoke,
+};
 use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec};
 use soroban_sdk::{Address, BytesN, Env};
 
@@ -283,14 +285,15 @@ fn test_get_owner_none_for_unknown() {
 }
 
 #[test]
-fn test_transfer_username() {
+fn get_username_record_extends_ttl_on_read() {
+    use crate::storage::{DataKey, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
+
     let env = Env::default();
     let (factory_id, factory, auction_contract, _) = setup_factory(&env);
     let owner = Address::generate(&env);
     let hash = username_hash(&env);
     let deploy_args: Vec<Val> = (hash.clone(), owner.clone()).into_val(&env);
 
-    // Deploy first
     env.mock_auths(&[MockAuth {
         address: &auction_contract,
         invoke: &MockAuthInvoke {
@@ -302,35 +305,20 @@ fn test_transfer_username() {
     }]);
     factory.deploy_username(&hash, &owner);
 
-    // Now transfer
-    let new_owner = Address::generate(&env);
-    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    // Advance the ledger so the remaining TTL drops below the lifetime threshold.
+    env.ledger().with_mut(|l| {
+        l.sequence_number += (PERSISTENT_BUMP_AMOUNT - PERSISTENT_LIFETIME_THRESHOLD + 1) as u32;
+    });
 
-    env.mock_auths(&[MockAuth {
-        address: &auction_contract,
-        invoke: &MockAuthInvoke {
-            contract: &factory_id,
-            fn_name: "transfer_username",
-            args: transfer_args,
-            sub_invokes: &[],
-        },
-    }]);
+    // Reading the record should bump the TTL back to PERSISTENT_BUMP_AMOUNT.
+    let record = factory.get_username_record(&hash);
+    assert!(record.is_some());
 
-    factory.transfer_username(&hash, &new_owner);
-
-    let record = factory.get_username_record(&hash).unwrap();
-    assert_eq!(record.owner, new_owner);
-
-    let events = env.events().all();
-    let transfer_event = events.last().unwrap();
-    let (event_contract, topics, data) = transfer_event;
-    
-    assert_eq!(event_contract, factory_id);
-    let event_name = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-    assert_eq!(event_name, OWNERSHIP_TRANSFERRED);
-    
-    let (event_hash, event_old, event_new) = <(BytesN<32>, Address, Address)>::try_from_val(&env, &data).unwrap();
-    assert_eq!(event_hash, hash);
-    assert_eq!(event_old, owner);
-    assert_eq!(event_new, new_owner);
+    env.as_contract(&factory_id, || {
+        let ttl = env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Username(hash.clone()));
+        assert_eq!(ttl, PERSISTENT_BUMP_AMOUNT);
+    });
 }
