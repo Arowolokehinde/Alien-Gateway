@@ -1,9 +1,10 @@
-use soroban_sdk::testutils::{Address as _, Events as _, MockAuth, MockAuthInvoke};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger, MockAuth, MockAuthInvoke};
+use soroban_sdk::testutils::storage::Persistent as _;
 use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec};
 use soroban_sdk::{Address, BytesN, Env};
 
 use crate::errors::FactoryError;
-use crate::events::{OWNERSHIP_TRANSFERRED, USERNAME_DEPLOYED};
+use crate::events::USERNAME_DEPLOYED;
 use crate::{FactoryContract, FactoryContractClient};
 
 #[contract]
@@ -273,7 +274,8 @@ fn test_get_owner_none_for_unknown() {
 
 #[test]
 fn get_username_record_extends_ttl_on_read() {
-    use crate::storage::{DataKey, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
+    use crate::storage::{PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
+    use crate::types::DataKey;
 
     let env = Env::default();
     let (factory_id, factory, auction_contract, _) = setup_factory(&env);
