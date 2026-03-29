@@ -226,4 +226,32 @@ impl AuctionContract {
             soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotWinner);
         }
     }
+
+    pub fn get_auction_info(
+        env: Env,
+        id: u32,
+    ) -> Option<(
+        Address,
+        Address,
+        i128,
+        u64,
+        i128,
+        Option<Address>,
+        types::AuctionStatus,
+        bool,
+    )> {
+        if !storage::auction_exists(&env, id) {
+            return None;
+        }
+        Some((
+            storage::auction_get_seller(&env, id),
+            storage::auction_get_asset(&env, id),
+            storage::auction_get_min_bid(&env, id),
+            storage::auction_get_end_time(&env, id),
+            storage::auction_get_highest_bid(&env, id),
+            storage::auction_get_highest_bidder(&env, id),
+            storage::auction_get_status(&env, id),
+            storage::auction_is_claimed(&env, id),
+        ))
+    }
 }

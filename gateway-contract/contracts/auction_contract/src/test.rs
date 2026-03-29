@@ -418,3 +418,38 @@ fn test_claim_twice_fails() {
     client.claim(&1, &bidder);
     client.claim(&1, &bidder);
 }
+
+#[test]
+fn test_get_auction_info() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, seller, asset) = setup(&env);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &asset);
+    let bidder = Address::generate(&env);
+    token_admin.mint(&bidder, &200);
+
+    // Should return None for unknown id
+    assert_eq!(client.get_auction_info(&1), None);
+
+    client.create_auction(&1, &seller, &asset, &100, &1000u64);
+    
+    // Initial state
+    let info1 = client.get_auction_info(&1).unwrap();
+    assert_eq!(info1, (seller.clone(), asset.clone(), 100, 1000, 0, None, types::AuctionStatus::Open, false));
+
+    // After bid
+    client.place_bid(&1, &bidder, &150);
+    let info2 = client.get_auction_info(&1).unwrap();
+    assert_eq!(info2, (seller.clone(), asset.clone(), 100, 1000, 150, Some(bidder.clone()), types::AuctionStatus::Open, false));
+
+    // After close
+    env.ledger().set_timestamp(1001);
+    client.close_auction_by_id(&1);
+    let info3 = client.get_auction_info(&1).unwrap();
+    assert_eq!(info3, (seller.clone(), asset.clone(), 100, 1000, 150, Some(bidder.clone()), types::AuctionStatus::Closed, false));
+
+    // After claim
+    client.claim(&1, &bidder);
+    let info4 = client.get_auction_info(&1).unwrap();
+    assert_eq!(info4, (seller.clone(), asset.clone(), 100, 1000, 150, Some(bidder.clone()), types::AuctionStatus::Closed, true));
+}
