@@ -456,7 +456,12 @@ impl EscrowContract {
             return Err(EscrowError::InvalidInterval);
         }
 
-        // 2. Read Vault config to verify it exists and get the token
+        // 2. Reject self-payment
+        if from == to {
+            return Err(EscrowError::SelfPaymentNotAllowed);
+        }
+
+        // 3. Read Vault config to verify it exists and get the token
         let config = read_vault_config(&env, &from).ok_or(EscrowError::VaultNotFound)?;
 
         // 3. Authenticate caller as owner of from vault
