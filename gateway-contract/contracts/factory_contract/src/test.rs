@@ -5,7 +5,7 @@ use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec}
 use soroban_sdk::{Address, BytesN, Env};
 
 use crate::errors::FactoryError;
-use crate::events::USERNAME_DEPLOYED;
+use crate::events::{OWNERSHIP_TRANSFERRED, USERNAME_DEPLOYED};
 use crate::{FactoryContract, FactoryContractClient};
 
 #[contract]
@@ -280,4 +280,57 @@ fn test_get_owner_none_for_unknown() {
     let unknown_hash = BytesN::from_array(&env, &[99; 32]);
     let record = factory.get_username_record(&unknown_hash);
     assert!(record.is_none());
+}
+
+#[test]
+fn test_transfer_username() {
+    let env = Env::default();
+    let (factory_id, factory, auction_contract, _) = setup_factory(&env);
+    let owner = Address::generate(&env);
+    let hash = username_hash(&env);
+    let deploy_args: Vec<Val> = (hash.clone(), owner.clone()).into_val(&env);
+
+    // Deploy first
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "deploy_username",
+            args: deploy_args,
+            sub_invokes: &[],
+        },
+    }]);
+    factory.deploy_username(&hash, &owner);
+
+    // Now transfer
+    let new_owner = Address::generate(&env);
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+
+    factory.transfer_username(&hash, &new_owner);
+
+    let record = factory.get_username_record(&hash).unwrap();
+    assert_eq!(record.owner, new_owner);
+
+    let events = env.events().all();
+    let transfer_event = events.last().unwrap();
+    let (event_contract, topics, data) = transfer_event;
+    
+    assert_eq!(event_contract, factory_id);
+    let event_name = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+    assert_eq!(event_name, OWNERSHIP_TRANSFERRED);
+    
+    let (event_hash, event_old, event_new) = <(BytesN<32>, Address, Address)>::try_from_val(&env, &data).unwrap();
+    assert_eq!(event_hash, hash);
+    assert_eq!(event_old, owner);
+    assert_eq!(event_new, new_owner);
 }
