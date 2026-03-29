@@ -246,6 +246,34 @@ fn test_schedule_payment_returns_incrementing_ids() {
 }
 
 #[test]
+fn test_payment_counter_overflow_returns_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
+
+    create_vault(
+        &env,
+        &contract_id,
+        &from,
+        &Address::generate(&env),
+        &token,
+        1000,
+    );
+    env.ledger().set_timestamp(1000);
+
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::PaymentCounter, &u32::MAX);
+    });
+
+    
+    let result = client.try_schedule_payment(&from, &to, &100, &2000);
+    assert_eq!(result, Err(Ok(EscrowError::PaymentCounterOverflow)));
+}
+
+#[test]
 fn test_execute_scheduled_success() {
     let env = Env::default();
     env.mock_all_auths();
