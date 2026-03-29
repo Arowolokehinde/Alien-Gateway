@@ -596,6 +596,8 @@ impl EscrowContract {
     }
 }
 
+/// Returns the owner address of the vault identified by `commitment`, panicking
+/// with `VaultNotFound` if no vault config exists.
 fn resolve(env: &Env, commitment: &BytesN<32>) -> Address {
     let config = read_vault_config(env, commitment)
         .unwrap_or_else(|| panic_with_error!(env, EscrowError::VaultNotFound));
