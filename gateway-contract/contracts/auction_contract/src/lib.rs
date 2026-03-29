@@ -9,6 +9,8 @@ pub mod types;
 // Ensure event symbols are linked from the main contract entrypoint module.
 use crate::events::{AUCTION_CLOSED, AUCTION_CREATED, BID_PLACED, BID_REFUNDED, USERNAME_CLAIMED};
 
+/// Ensures event symbol constants are referenced from the crate root so the
+/// linker does not strip them when compiling to WASM.
 #[allow(dead_code)]
 fn _touch_event_symbols() {
     let _ = (
