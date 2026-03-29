@@ -7,7 +7,7 @@ use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec}
 use soroban_sdk::{Address, BytesN, Env};
 
 use crate::errors::FactoryError;
-use crate::events::USERNAME_DEPLOYED;
+use crate::events::{OWNERSHIP_TRANSFERRED, USERNAME_DEPLOYED};
 use crate::{FactoryContract, FactoryContractClient};
 
 #[contract]
