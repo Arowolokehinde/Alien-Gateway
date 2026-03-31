@@ -2,7 +2,7 @@ name: E2E Full Flow
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" , "dev" ]
   pull_request:
 
 jobs:
