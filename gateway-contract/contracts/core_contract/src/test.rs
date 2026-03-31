@@ -199,7 +199,12 @@ fn test_submit_proof_emits_username_registered_event() {
     );
 
     let last_event = events.last().expect("No events emitted");
-    let event_name = Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap();
+    let event_topic = last_event
+        .1
+        .get(0)
+        .expect("UsernameRegistered event topic missing");
+    let event_name = Symbol::try_from_val(&env, &event_topic)
+        .expect("UsernameRegistered event topic is not a Symbol");
     assert_eq!(event_name, username_registered_event(&env));
 
     let emitted_commitment: BytesN<32> = last_event.2.into_val(&env);
