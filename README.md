@@ -2,9 +2,9 @@
 # 🌉 Alien Gateway
 
 [![Smart Contracts CI](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/contract.yml/badge.svg)](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/contract.yml)
-[![SDK CI](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/sdk_tests.yml/badge.svg)](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/sdk_tests.yml)
+
 [![Validator CI](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/pre-commit-validation.yml/badge.svg)](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/pre-commit-validation.yml)
-[![ZK Circuits CI](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/zk_circuits.yml/badge.svg)](https://github.com/Alien-Protocol/Alien-Gateway/actions/workflows/zk_circuits.yml)
+
 
 <p align="center">
   <img 
