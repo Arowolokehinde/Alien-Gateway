@@ -35,10 +35,6 @@ fn username_hash(env: &Env) -> BytesN<32> {
     BytesN::from_array(env, &[7; 32])
 }
 
-// ============================================================================
-// OFFICIAL UPSTREAM TESTS
-// ============================================================================
-
 #[test]
 fn deploy_username_stores_record_and_emits_event() {
     let env = Env::default();
@@ -184,10 +180,6 @@ fn get_username_owner_returns_none_for_unregistered_hash() {
     assert_eq!(factory.get_username_owner(&unknown_hash), None);
 }
 
-// ============================================================================
-// ISSUE #108 SUPPLEMENTARY TESTS
-// ============================================================================
-
 #[test]
 fn test_deploy_username_success() {
     let env = Env::default();
@@ -315,12 +307,10 @@ fn get_username_record_extends_ttl_on_read() {
     }]);
     factory.deploy_username(&hash, &owner);
 
-    // Advance the ledger so the remaining TTL drops below the lifetime threshold.
     env.ledger().with_mut(|l| {
         l.sequence_number += PERSISTENT_BUMP_AMOUNT - PERSISTENT_LIFETIME_THRESHOLD + 1;
     });
 
-    // Reading the record should bump the TTL back to PERSISTENT_BUMP_AMOUNT.
     let record = factory.get_username_record(&hash);
     assert!(record.is_some());
 

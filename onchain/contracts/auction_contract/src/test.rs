@@ -16,8 +16,6 @@ mod tests {
         let contract_id = env.register(AuctionContract, ());
         let client = AuctionContractClient::new(&env, &contract_id);
 
-        // Setup auction state
-        // register a single stellar asset and mint tokens to bidders so transfers succeed
         let token_admin = Address::generate(&env);
         let asset = env
             .register_stellar_asset_contract_v2(token_admin)
@@ -36,16 +34,12 @@ mod tests {
             storage::auction_set_asset(&env, 1, &asset);
         });
 
-        // Alice places initial bid
         client.place_bid(&1, &alice, &100_i128);
 
-        // Bob outbids Alice
         client.place_bid(&1, &bob, &200_i128);
 
-        // Capture events and assert BID_RFDN event present with correct bidder and refund_amount
         let events = env.events().all();
         assert!(!events.is_empty());
-        // Find any event whose data decodes to (Address, i128) and matches alice/100
         let mut found = false;
         for (_contract, _topics, data) in events.iter().rev() {
             if let Ok((ev_bidder, ev_amount)) = <(Address, i128)>::try_from_val(&env, &data) {
@@ -80,7 +74,6 @@ mod tests {
             .register_stellar_asset_contract_v2(token_admin)
             .address();
         let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &asset);
-        // Mint to bidders so transfers succeed
         token_admin_client.mint(&alice, &1000);
 
         env.as_contract(&contract_id, || {
@@ -93,10 +86,8 @@ mod tests {
             storage::auction_set_username_hash(&env, 1, &BytesN::from_array(&env, &[0u8; 32]));
         });
 
-        // Alice places initial bid
         client.place_bid(&1, &alice, &100_i128);
 
-        // Capture events and assert BID_PLCD event present
         let events = env.events().all();
         assert!(!events.is_empty());
 
@@ -127,7 +118,6 @@ use soroban_sdk::{
     Address, BytesN, Env, TryFromVal,
 };
 
-// Dummy factory contract (kept for existing tests)
 #[contract]
 pub struct DummyFactory;
 #[contractimpl]
@@ -135,17 +125,11 @@ impl DummyFactory {
     pub fn deploy_username(_env: Env, _username_hash: BytesN<32>, _claimer: Address) {}
 }
 
-// ── TTL constant sanity checks ────────────────────────────────────────────────
-
 #[test]
 fn test_ttl_constants_match_formula() {
-    // 30 days * 24h * 3600s / 5s per ledger = 518_400
     assert_eq!(storage::PERSISTENT_BUMP_AMOUNT, 30 * 24 * 3600 / 5);
-    // 7 days * 24h * 3600s / 5s per ledger = 120_960
     assert_eq!(storage::PERSISTENT_LIFETIME_THRESHOLD, 7 * 24 * 3600 / 5);
 }
-
-// ── existing tests ────────────────────────────────────────────────────────────
 
 #[test]
 fn test_claim_username_success() {
@@ -336,8 +320,6 @@ fn test_close_auction_emits_event() {
     assert!(!env.events().all().is_empty());
 }
 
-// ── new lifecycle tests (issue #101) ─────────────────────────────────────────
-
 fn setup(env: &Env) -> (AuctionContractClient<'static>, Address, Address) {
     let contract_id = env.register(AuctionContract, ());
     let client = AuctionContractClient::new(env, &contract_id);
@@ -365,7 +347,6 @@ fn test_auction_full_lifecycle() {
     client.place_bid(&1, &bidder1, &150);
     client.place_bid(&1, &bidder2, &200);
 
-    // bidder1 is outbid and funds are held for refund; bidder2 is highest bidder.
     assert_eq!(token.balance(&bidder1), 850);
     assert_eq!(token.balance(&bidder2), 800);
 
@@ -562,7 +543,6 @@ fn test_outbid_self_fails() {
     token_admin.mint(&bidder, &500);
     client.create_auction(&1, &seller, &asset, &100, &1000u64);
     client.place_bid(&1, &bidder, &150);
-    // Same bidder tries to raise their own bid — must be rejected
     client.place_bid(&1, &bidder, &200);
 }
 
@@ -615,12 +595,10 @@ fn test_get_auction_info() {
     let bidder = Address::generate(&env);
     token_admin.mint(&bidder, &200);
 
-    // Should return None for unknown id
     assert_eq!(client.get_auction_info(&1), None);
 
     client.create_auction(&1, &seller, &asset, &100, &1000u64);
 
-    // Initial state
     let info1 = client
         .get_auction_info(&1)
         .expect("expected auction info after create");
@@ -638,7 +616,6 @@ fn test_get_auction_info() {
         )
     );
 
-    // After bid
     client.place_bid(&1, &bidder, &150);
     let info2 = client
         .get_auction_info(&1)
@@ -657,7 +634,6 @@ fn test_get_auction_info() {
         )
     );
 
-    // After close
     env.ledger().set_timestamp(1001);
     client.close_auction_by_id(&1);
     let info3 = client
@@ -677,7 +653,6 @@ fn test_get_auction_info() {
         )
     );
 
-    // After claim
     client.claim(&1, &bidder);
     let info4 = client
         .get_auction_info(&1)

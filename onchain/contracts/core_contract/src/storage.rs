@@ -2,31 +2,19 @@ use soroban_sdk::{contracttype, Address, BytesN, Env};
 
 use crate::types::PrivacyMode;
 
-/// TTL constants for persistent storage entries.
-/// Bump amount: ~30 days (at ~5s per ledger close).
 pub(crate) const PERSISTENT_BUMP_AMOUNT: u32 = 518_400;
-/// Lifetime threshold: ~7 days — entries are extended when remaining TTL drops below this.
 pub(crate) const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 
-/// Storage keys for the Core contract's persistent and instance storage.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    /// Key for resolver data, indexed by commitment.
     Resolver(BytesN<32>),
-    /// Key for the SMT root in instance storage.
     SmtRoot,
-    /// Key for the primary Stellar address linked to a username hash.
     StellarAddress(BytesN<32>),
-    /// Key for the list of all Stellar addresses linked to a username hash.
     StellarAddresses(BytesN<32>),
-    /// Key for the user's selected privacy mode.
     PrivacyMode(BytesN<32>),
-    /// Key for the contract owner set during initialization (instance storage).
     Owner,
-    /// Key for a shielded address commitment, indexed by username hash.
     ShieldedAddress(BytesN<32>),
-    /// Key for the ledger timestamp at which a commitment was first registered.
     CreatedAt(BytesN<32>),
 }
 
