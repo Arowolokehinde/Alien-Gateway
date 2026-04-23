@@ -8,14 +8,11 @@ pub mod singleton;
 pub mod storage;
 pub mod types;
 
-// Ensure event symbols are linked from the main
-// contract entrypoint module.
 use crate::errors::AuctionError;
 use crate::events::{AUCTION_CLOSED, AUCTION_CREATED, BID_PLACED, BID_REFUNDED, USERNAME_CLAIMED};
 use crate::types::AuctionStatus;
 
-/// Ensures event symbol constants are referenced from the crate root so the
-/// linker does not strip them when compiling to WASM.
+/// Internal helper to ensure event symbols are included in the WASM.
 #[allow(dead_code)]
 fn _touch_event_symbols() {
     let _ = (
@@ -45,7 +42,6 @@ mod test;
 #[contract]
 pub struct AuctionContract;
 
-/// Singleton flow: one auction per contract instance.
 #[contractimpl]
 impl AuctionContract {
     pub fn close_auction(env: Env, username_hash: BytesN<32>) -> Result<(), errors::AuctionError> {
@@ -61,7 +57,6 @@ impl AuctionContract {
     }
 }
 
-/// ID-indexed flow: multiple auctions identified by a numeric id.
 #[contractimpl]
 impl AuctionContract {
     pub fn create_auction(
@@ -82,13 +77,11 @@ impl AuctionContract {
     pub fn refund_bid(env: Env, id: u32, bidder: Address) -> Result<(), errors::AuctionError> {
         bidder.require_auth();
 
-        // Ensure auction is closed
         let status = storage::auction_get_status(&env, id);
         if status != types::AuctionStatus::Closed {
             return Err(errors::AuctionError::NotClosed);
         }
 
-        // Winner cannot claim a refund via this path
         let highest_bidder = storage::auction_get_highest_bidder(&env, id);
         if highest_bidder
             .as_ref()
@@ -98,30 +91,35 @@ impl AuctionContract {
             return Err(errors::AuctionError::NotWinner);
         }
 
-        // Guard against double refund
         if storage::auction_is_bid_refunded(&env, id, &bidder) {
             return Err(errors::AuctionError::AlreadyClaimed);
         }
 
-        // Retrieve the outbid amount owed to this bidder
         let amount = storage::auction_get_outbid_amount(&env, id, &bidder);
         if amount <= 0 {
             return Err(errors::AuctionError::InvalidState);
         }
 
+
         // Transfer asset back to bidder (single transfer)
         let asset = storage::auction_get_asset(&env, id)?;
+
+        let asset = storage::auction_get_asset(&env, id);
+
         let token = soroban_sdk::token::Client::new(&env, &asset);
         token.transfer(&env.current_contract_address(), &bidder, &amount);
 
-        // Mark refund as complete and zero out the stored amount
         storage::auction_set_bid_refunded(&env, id, &bidder);
         storage::auction_set_outbid_amount(&env, id, &bidder, 0);
+
 
         // Emit a single refund event
         events::emit_bid_refunded(&env, &soroban_sdk::BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
 
         Ok(())
+
+        events::emit_bid_refunded(&env, &BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
+
     }
 
     pub fn close_auction_by_id(env: Env, id: u32) -> Result<(), errors::AuctionError> {
@@ -165,7 +163,6 @@ impl AuctionContract {
     }
 }
 
-/// CRUD helpers for hash-indexed auction storage.
 #[contractimpl]
 impl AuctionContract {
     pub fn get_auction(env: Env, hash: BytesN<32>) -> Option<types::AuctionState> {

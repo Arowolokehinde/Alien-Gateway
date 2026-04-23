@@ -1,6 +1,5 @@
 use soroban_sdk::{contractevent, symbol_short, Address, BytesN, Env, Symbol};
 
-// Event symbols must be <= 9 chars (Soroban `symbol_short!`).
 pub const AUCTION_CREATED: Symbol = symbol_short!("AUCR_CRT");
 pub const BID_PLACED: Symbol = symbol_short!("BID_PLCD");
 pub const AUCTION_CLOSED: Symbol = symbol_short!("AUCR_CLSD");
@@ -98,10 +97,18 @@ pub fn emit_bid_refunded(
     bidder: &Address,
     refund_amount: i128,
 ) {
+
     BidRefundedEvent {
         username_hash: username_hash.clone(),
         bidder: bidder.clone(),
         refund_amount,
     }
     .publish(env);
+
+    #[allow(deprecated)]
+    env.events().publish(
+        (BID_REFUNDED, username_hash.clone()),
+        (bidder.clone(), refund_amount),
+    );
+
 }
