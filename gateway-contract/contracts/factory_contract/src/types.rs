@@ -8,3 +8,10 @@ pub struct UsernameRecord {
     pub registered_at: u64,
     pub core_contract: Address,
 }
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UsernameTransferredPayload {
+    pub old_owner: Address,
+    pub new_owner: Address,
+}

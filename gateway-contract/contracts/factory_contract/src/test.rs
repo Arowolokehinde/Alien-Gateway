@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 
 use soroban_sdk::testutils::{Address as _, Events as _, MockAuth, MockAuthInvoke};
 use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec};
@@ -137,4 +137,108 @@ fn non_registered_auction_auth_is_rejected() {
 
     assert!(result.is_err());
     assert_ne!(wrong_caller, auction_contract);
+}
+
+#[test]
+fn transfer_username_success_and_emits_event() {
+    let env = Env::default();
+    let (factory_id, factory, auction_contract, _) = setup_factory(&env);
+    let owner = Address::generate(&env);
+    let new_owner = Address::generate(&env);
+    let hash = username_hash(&env);
+
+    let deploy_args: Vec<Val> = (hash.clone(), owner.clone()).into_val(&env);
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "deploy_username",
+            args: deploy_args,
+            sub_invokes: &[],
+        },
+    }]);
+    factory.deploy_username(&hash, &owner);
+
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+    factory.transfer_username(&hash, &new_owner);
+
+    let events = env.events().all();
+
+    let record = factory.get_username_record(&hash).unwrap();
+    assert_eq!(record.owner, new_owner);
+
+    assert_eq!(events.len(), 1);
+
+    let (event_contract, topics, data) = events.get(0).unwrap();
+    assert_eq!(event_contract, factory_id);
+    assert_eq!(topics.len(), 2);
+
+    let event_name = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+    let event_hash = BytesN::<32>::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+    
+    let event_payload = crate::types::UsernameTransferredPayload::try_from_val(&env, &data).unwrap();
+
+    assert_eq!(event_name, Symbol::new(&env, "USERNAME_TRANSFERRED"));
+    assert_eq!(event_hash, hash);
+    assert_eq!(event_payload.old_owner, owner);
+    assert_eq!(event_payload.new_owner, new_owner);
+}
+
+#[test]
+fn transfer_username_fails_when_auction_not_configured() {
+    let env = Env::default();
+    let factory_id = env.register(crate::FactoryContract, ());
+
+    let hash = username_hash(&env);
+    let new_owner = Address::generate(&env);
+
+    let result = env.try_invoke_contract::<(), FactoryError>(
+        &factory_id,
+        &Symbol::new(&env, "transfer_username"),
+        Vec::<Val>::from_array(
+            &env,
+            [hash.into_val(&env), new_owner.into_val(&env)],
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(FactoryError::Unauthorized)));
+}
+
+#[test]
+fn transfer_username_fails_when_not_deployed() {
+    let env = Env::default();
+    let (factory_id, _, auction_contract, _) = setup_factory(&env);
+    let hash = username_hash(&env);
+    let new_owner = Address::generate(&env);
+
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+
+    let result = env.try_invoke_contract::<(), FactoryError>(
+        &factory_id,
+        &Symbol::new(&env, "transfer_username"),
+        Vec::<Val>::from_array(
+            &env,
+            [hash.into_val(&env), new_owner.into_val(&env)],
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(FactoryError::NotDeployed)));
 }

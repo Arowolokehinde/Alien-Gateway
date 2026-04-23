@@ -7,4 +7,5 @@ pub enum FactoryError {
     Unauthorized = 1,
     AlreadyDeployed = 2,
     CoreContractNotConfigured = 3,
+    NotDeployed = 4,
 }
