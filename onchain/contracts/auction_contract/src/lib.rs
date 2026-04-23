@@ -55,10 +55,6 @@ impl AuctionContract {
     ) -> Result<(), errors::AuctionError> {
         singleton::claim_username(&env, username_hash, claimer)
     }
-}
-
-#[contractimpl]
-impl AuctionContract {
     pub fn create_auction(
         env: Env,
         id: u32,
@@ -110,7 +106,7 @@ impl AuctionContract {
         storage::auction_set_outbid_amount(&env, id, &bidder, 0);
 
         // Emit a single refund event
-        events::emit_bid_refunded(&env, &soroban_sdk::BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
+        events::emit_bid_refunded(&env, &storage::auction_get_username_hash(&env, id), &bidder, amount);
 
         Ok(())
     }
@@ -154,10 +150,7 @@ impl AuctionContract {
             storage::auction_is_claimed(&env, id),
         )))
     }
-}
 
-#[contractimpl]
-impl AuctionContract {
     pub fn get_auction(env: Env, hash: BytesN<32>) -> Option<types::AuctionState> {
         storage::get_auction(&env, &hash)
     }
