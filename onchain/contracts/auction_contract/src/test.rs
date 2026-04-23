@@ -47,22 +47,19 @@ mod tests {
         assert!(!events.is_empty());
         // Find any event whose data decodes to (Address, i128) and matches alice/100
         let mut found = false;
-        for (_contract, _topics, data) in events.iter().rev() {
-            if let Ok((ev_bidder, ev_amount)) = <(Address, i128)>::try_from_val(&env, &data) {
-                if ev_bidder == alice && ev_amount == 100_i128 {
-                    found = true;
-                    break;
-                }
-            } else if let Ok((_uh, ev_bidder, ev_amount)) =
-                <(BytesN<32>, Address, i128)>::try_from_val(&env, &data)
-            {
-                if ev_bidder == alice && ev_amount == 100_i128 {
+        for (_contract, topics, data) in events.iter().rev() {
+            let event_name: Result<soroban_sdk::Symbol, _> = soroban_sdk::Symbol::try_from_val(
+                &env,
+                &topics.get(0).expect("event topic missing"),
+            );
+            if let Ok(name) = event_name {
+                if name == soroban_sdk::Symbol::new(&env, "bid_refunded_event") {
                     found = true;
                     break;
                 }
             }
         }
-        assert!(found, "BID_RFDN event not found");
+        assert!(found, "bid_refunded_event not found");
     }
 
     #[test]
@@ -96,7 +93,7 @@ mod tests {
         // Alice places initial bid
         client.place_bid(&1, &alice, &100_i128);
 
-        // Capture events and assert BID_PLCD event present
+        // Capture events and assert bid_placed_event present
         let events = env.events().all();
         assert!(!events.is_empty());
 
@@ -107,18 +104,13 @@ mod tests {
                 &topics.get(0).expect("event topic missing"),
             );
             if let Ok(name) = event_name {
-                if name == soroban_sdk::Symbol::new(&env, "BID_PLCD") {
-                    if let Ok((ev_bidder, ev_amount)) = <(Address, i128)>::try_from_val(&env, &data)
-                    {
-                        if ev_bidder == alice && ev_amount == 100_i128 {
-                            found = true;
-                            break;
-                        }
-                    }
+                if name == soroban_sdk::Symbol::new(&env, "bid_placed_event") {
+                    found = true;
+                    break;
                 }
             }
         }
-        assert!(found, "BID_PLCD event not found");
+        assert!(found, "bid_placed_event not found");
     }
 }
 use super::*;

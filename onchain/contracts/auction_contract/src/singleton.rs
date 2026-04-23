@@ -8,11 +8,10 @@ use crate::{errors::AuctionError, events, storage, types};
 pub fn close_auction(env: &Env, username_hash: BytesN<32>) -> Result<(), AuctionError> {
     let status = storage::get_status(env);
     crate::require_status(
-        env,
         status,
         types::AuctionStatus::Open,
         AuctionError::AuctionNotOpen,
-    );
+    )?;
 
     let current_time = env.ledger().timestamp();
     let end_time = storage::get_end_time(env);
@@ -45,11 +44,10 @@ pub fn claim_username(
     }
 
     crate::require_status(
-        env,
         status,
         types::AuctionStatus::Closed,
         AuctionError::NotClosed,
-    );
+    )?;
 
     let highest_bidder = storage::get_highest_bidder(env);
     if !highest_bidder.map(|h| h == claimer).unwrap_or(false) {

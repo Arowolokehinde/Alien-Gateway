@@ -28,11 +28,15 @@ fn _touch_event_symbols() {
 }
 
 #[allow(clippy::missing_docs_in_private_items)]
-fn require_status(env: &Env, status: AuctionStatus, expected: AuctionStatus, err: AuctionError) {
-    let _ = env;
+fn require_status(
+    status: AuctionStatus,
+    expected: AuctionStatus,
+    err: AuctionError,
+) -> Result<(), AuctionError> {
     if status != expected {
-        soroban_sdk::panic_with_error!(env, err);
+        return Err(err);
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -67,21 +71,21 @@ impl AuctionContract {
         asset: Address,
         min_bid: i128,
         end_time: u64,
-    ) {
+    ) -> Result<(), errors::AuctionError> {
         indexed::create_auction(&env, id, seller, asset, min_bid, end_time)
     }
 
-    pub fn place_bid(env: Env, id: u32, bidder: Address, amount: i128) {
+    pub fn place_bid(env: Env, id: u32, bidder: Address, amount: i128) -> Result<(), errors::AuctionError> {
         indexed::place_bid(&env, id, bidder, amount)
     }
 
-    pub fn refund_bid(env: Env, id: u32, bidder: Address) {
+    pub fn refund_bid(env: Env, id: u32, bidder: Address) -> Result<(), errors::AuctionError> {
         bidder.require_auth();
 
         // Ensure auction is closed
         let status = storage::auction_get_status(&env, id);
         if status != types::AuctionStatus::Closed {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotClosed);
+            return Err(errors::AuctionError::NotClosed);
         }
 
         // Winner cannot claim a refund via this path
@@ -91,22 +95,22 @@ impl AuctionContract {
             .map(|h| h == &bidder)
             .unwrap_or(false)
         {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::NotWinner);
+            return Err(errors::AuctionError::NotWinner);
         }
 
         // Guard against double refund
         if storage::auction_is_bid_refunded(&env, id, &bidder) {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::AlreadyClaimed);
+            return Err(errors::AuctionError::AlreadyClaimed);
         }
 
         // Retrieve the outbid amount owed to this bidder
         let amount = storage::auction_get_outbid_amount(&env, id, &bidder);
         if amount <= 0 {
-            soroban_sdk::panic_with_error!(&env, errors::AuctionError::InvalidState);
+            return Err(errors::AuctionError::InvalidState);
         }
 
         // Transfer asset back to bidder (single transfer)
-        let asset = storage::auction_get_asset(&env, id);
+        let asset = storage::auction_get_asset(&env, id)?;
         let token = soroban_sdk::token::Client::new(&env, &asset);
         token.transfer(&env.current_contract_address(), &bidder, &amount);
 
@@ -115,14 +119,16 @@ impl AuctionContract {
         storage::auction_set_outbid_amount(&env, id, &bidder, 0);
 
         // Emit a single refund event
-        events::emit_bid_refunded(&env, &BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
+        events::emit_bid_refunded(&env, &soroban_sdk::BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
+
+        Ok(())
     }
 
-    pub fn close_auction_by_id(env: Env, id: u32) {
+    pub fn close_auction_by_id(env: Env, id: u32) -> Result<(), errors::AuctionError> {
         indexed::close_auction_by_id(&env, id)
     }
 
-    pub fn claim(env: Env, id: u32, claimant: Address) {
+    pub fn claim(env: Env, id: u32, claimant: Address) -> Result<(), errors::AuctionError> {
         indexed::claim(&env, id, claimant)
     }
 
@@ -130,29 +136,32 @@ impl AuctionContract {
     pub fn get_auction_info(
         env: Env,
         id: u32,
-    ) -> Option<(
-        Address,
-        Address,
-        i128,
-        u64,
-        i128,
-        Option<Address>,
-        types::AuctionStatus,
-        bool,
-    )> {
+    ) -> Result<
+        Option<(
+            Address,
+            Address,
+            i128,
+            u64,
+            i128,
+            Option<Address>,
+            types::AuctionStatus,
+            bool,
+        )>,
+        errors::AuctionError,
+    > {
         if !storage::auction_exists(&env, id) {
-            return None;
+            return Ok(None);
         }
-        Some((
-            storage::auction_get_seller(&env, id),
-            storage::auction_get_asset(&env, id),
+        Ok(Some((
+            storage::auction_get_seller(&env, id)?,
+            storage::auction_get_asset(&env, id)?,
             storage::auction_get_min_bid(&env, id),
             storage::auction_get_end_time(&env, id),
             storage::auction_get_highest_bid(&env, id),
             storage::auction_get_highest_bidder(&env, id),
             storage::auction_get_status(&env, id),
             storage::auction_is_claimed(&env, id),
-        ))
+        )))
     }
 }
 
