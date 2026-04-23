@@ -33,7 +33,12 @@ pub fn create_auction(
     Ok(())
 }
 
-pub fn place_bid(env: &Env, id: u32, bidder: Address, amount: i128) -> Result<(), errors::AuctionError> {
+pub fn place_bid(
+    env: &Env,
+    id: u32,
+    bidder: Address,
+    amount: i128,
+) -> Result<(), errors::AuctionError> {
     bidder.require_auth();
     if !storage::auction_exists(env, id) {
         return Err(errors::AuctionError::AuctionNotOpen);

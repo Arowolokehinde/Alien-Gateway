@@ -66,7 +66,12 @@ impl AuctionContract {
         indexed::create_auction(&env, id, seller, asset, min_bid, end_time)
     }
 
-    pub fn place_bid(env: Env, id: u32, bidder: Address, amount: i128) -> Result<(), errors::AuctionError> {
+    pub fn place_bid(
+        env: Env,
+        id: u32,
+        bidder: Address,
+        amount: i128,
+    ) -> Result<(), errors::AuctionError> {
         indexed::place_bid(&env, id, bidder, amount)
     }
 
@@ -106,7 +111,12 @@ impl AuctionContract {
         storage::auction_set_outbid_amount(&env, id, &bidder, 0);
 
         // Emit a single refund event
-        events::emit_bid_refunded(&env, &storage::auction_get_username_hash(&env, id), &bidder, amount);
+        events::emit_bid_refunded(
+            &env,
+            &storage::auction_get_username_hash(&env, id),
+            &bidder,
+            amount,
+        );
 
         Ok(())
     }

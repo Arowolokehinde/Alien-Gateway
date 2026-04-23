@@ -69,6 +69,7 @@ pub fn emit_bid_placed(env: &Env, username_hash: &BytesN<32>, bidder: &Address, 
     .publish(env);
 }
 
+
 pub fn emit_auction_closed(
     env: &Env,
     username_hash: &BytesN<32>,

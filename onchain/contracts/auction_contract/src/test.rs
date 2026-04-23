@@ -85,7 +85,6 @@ mod tests {
 
         client.place_bid(&1, &alice, &100_i128);
 
-
         // Capture events and assert bid_placed_event present
 
         let events = env.events().all();
