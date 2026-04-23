@@ -22,7 +22,7 @@ use registration::Registration;
 use resolver::Resolver;
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, Symbol};
 use transfer::Transfer;
-use types::{ChainType, PrivacyMode, Proof, PublicSignals};
+use types::{ChainType, PermissionSet, PrivacyMode, Proof, PublicSignals};
 
 #[contract]
 pub struct Contract;
@@ -50,9 +50,9 @@ impl Contract {
 
     pub fn register_resolver(e: Env, c: Address, h: BytesN<32>, p: Proof, s: PublicSignals) { Resolver::register_resolver(e, c, h, p, s); }
 
-    pub fn set_memo(e: Env, c: BytesN<32>, m: u64) { Resolver::set_memo(e, c, m) }
+    pub fn set_memo(e: Env, c: Address, cm: BytesN<32>, m: u64) { Resolver::set_memo(e, c, cm, m) }
 
-    pub fn set_privacy_mode(e: Env, h: BytesN<32>, m: PrivacyMode) { Resolver::set_privacy_mode(e, h, m); }
+    pub fn set_privacy_mode(e: Env, c: Address, h: BytesN<32>, m: PrivacyMode) { Resolver::set_privacy_mode(e, c, h, m); }
 
     pub fn get_privacy_mode(e: Env, h: BytesN<32>) -> PrivacyMode { Resolver::get_privacy_mode(e, h) }
 
@@ -89,4 +89,12 @@ impl Contract {
     pub fn get_shielded_address(e: Env, h: BytesN<32>) -> Option<BytesN<32>> { AddressManager::get_shielded_address(e, h) }
 
     pub fn is_shielded(e: Env, h: BytesN<32>) -> bool { AddressManager::is_shielded(e, h) }
+
+    pub fn grant_delegate(e: Env, o: Address, h: BytesN<32>, d: Address, p: PermissionSet) {
+        Registration::grant_delegate(e, o, h, d, p);
+    }
+
+    pub fn revoke_delegate(e: Env, o: Address, h: BytesN<32>, d: Address) {
+        Registration::revoke_delegate(e, o, h, d);
+    }
 }

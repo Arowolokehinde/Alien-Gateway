@@ -4,7 +4,7 @@ use crate::errors::{ChainAddressError, CoreError};
 use crate::events::{shielded_add_event, stellar_rem_event, ADDR_ADD, CHAIN_ADD, CHAIN_REM};
 use crate::registration::{DataKey as CommitmentKey, Registration};
 use crate::storage::{self, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
-use crate::types::ChainType;
+use crate::types::{ChainType, Permission};
 
 #[contracttype]
 #[derive(Clone)]
@@ -31,7 +31,7 @@ impl AddressManager {
             .get(&owner_key)
             .unwrap_or_else(|| panic_with_error!(&env, ChainAddressError::NotRegistered));
 
-        if owner != caller {
+        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::AddChainAddress) {
             panic_with_error!(&env, ChainAddressError::Unauthorized);
         }
 
@@ -76,7 +76,7 @@ impl AddressManager {
             .get(&owner_key)
             .unwrap_or_else(|| panic_with_error!(&env, ChainAddressError::NotRegistered));
 
-        if owner != caller {
+        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::RemoveChainAddress) {
             panic_with_error!(&env, ChainAddressError::Unauthorized);
         }
 
@@ -98,8 +98,8 @@ impl AddressManager {
         let owner = Registration::get_owner(env.clone(), username_hash.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller {
-            panic_with_error!(&env, CoreError::NotFound);
+        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::AddStellarAddress) {
+            panic_with_error!(&env, CoreError::Unauthorized);
         }
 
         let mut linked_addresses: Vec<Address> = env
@@ -133,7 +133,7 @@ impl AddressManager {
         let owner = Registration::get_owner(env.clone(), username_hash.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller {
+        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::RemoveStellarAddress) {
             panic_with_error!(&env, CoreError::Unauthorized);
         }
 

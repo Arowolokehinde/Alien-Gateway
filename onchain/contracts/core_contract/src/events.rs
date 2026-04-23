@@ -17,6 +17,8 @@ pub const ROLE_REVOKED: Symbol = symbol_short!("ROLE_RVN");
 pub const DEPOSIT: Symbol = symbol_short!("DEPOSIT");
 pub const WITHDRAW: Symbol = symbol_short!("WITHDRAW");
 pub const SCHED_PAY: Symbol = symbol_short!("SCHED_PAY");
+pub const DELEGATE_GNT: Symbol = symbol_short!("DLG_GNT");
+pub const DELEGATE_RVN: Symbol = symbol_short!("DLG_RVN");
 
 pub fn privacy_set_event(env: &Env) -> Symbol {
     Symbol::new(env, "PRIVACY_SET")
