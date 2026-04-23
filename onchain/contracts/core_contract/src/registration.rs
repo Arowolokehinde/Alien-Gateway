@@ -97,6 +97,7 @@ impl Registration {
 
         storage::set_delegate_permissions(&env, &username_hash, &delegate, &permissions);
 
+        #[allow(deprecated)]
         env.events().publish(
             (DELEGATE_GNT,),
             (username_hash, delegate, permissions.permissions),
@@ -115,6 +116,7 @@ impl Registration {
 
         storage::remove_delegate_permissions(&env, &username_hash, &delegate);
 
+        #[allow(deprecated)]
         env.events()
             .publish((DELEGATE_RVN,), (username_hash, delegate));
     }
