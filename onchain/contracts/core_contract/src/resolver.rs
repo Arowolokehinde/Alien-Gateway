@@ -63,7 +63,9 @@ impl Resolver {
         let owner = Registration::get_owner(env.clone(), commitment.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller && !storage::has_permission(&env, &commitment, &caller, Permission::SetMemo) {
+        if owner != caller
+            && !storage::has_permission(&env, &commitment, &caller, Permission::SetMemo)
+        {
             panic_with_error!(&env, CoreError::Unauthorized);
         }
 
@@ -73,13 +75,20 @@ impl Resolver {
             .set(&storage::DataKey::Resolver(commitment), &data);
     }
 
-    pub fn set_privacy_mode(env: Env, caller: Address, username_hash: BytesN<32>, mode: PrivacyMode) {
+    pub fn set_privacy_mode(
+        env: Env,
+        caller: Address,
+        username_hash: BytesN<32>,
+        mode: PrivacyMode,
+    ) {
         caller.require_auth();
 
         let owner = Registration::get_owner(env.clone(), username_hash.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::SetPrivacyMode) {
+        if owner != caller
+            && !storage::has_permission(&env, &username_hash, &caller, Permission::SetPrivacyMode)
+        {
             panic_with_error!(&env, CoreError::Unauthorized);
         }
 

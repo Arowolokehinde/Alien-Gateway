@@ -1,6 +1,8 @@
 use crate::registration::DataKey as RegistrationKey;
 use crate::smt_root::SmtRoot;
-use crate::types::{AddressMetadata, ChainType, Permission, PermissionSet, PrivacyMode, PublicSignals};
+use crate::types::{
+    AddressMetadata, ChainType, Permission, PermissionSet, PrivacyMode, PublicSignals,
+};
 use crate::{Contract, ContractClient};
 use escrow_contract::types::{
     AutoPay, ScheduledPayment as EscrowScheduledPayment, VaultConfig, VaultState,
@@ -1602,7 +1604,12 @@ fn test_delegate_scoped_permissions() {
     let new_root = BytesN::from_array(&env, &[101u8; 32]);
 
     client.register(&owner, &hash);
-    client.register_resolver(&owner, &hash, &dummy_proof(&env), &signals(&hash, root, new_root));
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &signals(&hash, root, new_root),
+    );
 
     // Grant SetMemo permission
     let mut permissions = Vec::new(&env);
@@ -1649,7 +1656,10 @@ fn test_delegate_address_management() {
     // Test chain address
     let eth_addr = Bytes::from_slice(&env, b"0x1234567890123456789012345678901234567890");
     client.add_chain_address(&delegate, &hash, &ChainType::Evm, &eth_addr);
-    assert_eq!(client.get_chain_address(&hash, &ChainType::Evm), Some(eth_addr));
+    assert_eq!(
+        client.get_chain_address(&hash, &ChainType::Evm),
+        Some(eth_addr)
+    );
 
     client.remove_chain_address(&delegate, &hash, &ChainType::Evm);
     assert_eq!(client.get_chain_address(&hash, &ChainType::Evm), None);
@@ -1692,7 +1702,12 @@ fn test_delegate_set_privacy_mode() {
     let new_root = BytesN::from_array(&env, &[104u8; 32]);
 
     client.register(&owner, &hash);
-    client.register_resolver(&owner, &hash, &dummy_proof(&env), &signals(&hash, root, new_root));
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &signals(&hash, root, new_root),
+    );
 
     // Grant SetPrivacyMode
     let mut permissions = Vec::new(&env);

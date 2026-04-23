@@ -31,7 +31,9 @@ impl AddressManager {
             .get(&owner_key)
             .unwrap_or_else(|| panic_with_error!(&env, ChainAddressError::NotRegistered));
 
-        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::AddChainAddress) {
+        if owner != caller
+            && !storage::has_permission(&env, &username_hash, &caller, Permission::AddChainAddress)
+        {
             panic_with_error!(&env, ChainAddressError::Unauthorized);
         }
 
@@ -76,7 +78,14 @@ impl AddressManager {
             .get(&owner_key)
             .unwrap_or_else(|| panic_with_error!(&env, ChainAddressError::NotRegistered));
 
-        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::RemoveChainAddress) {
+        if owner != caller
+            && !storage::has_permission(
+                &env,
+                &username_hash,
+                &caller,
+                Permission::RemoveChainAddress,
+            )
+        {
             panic_with_error!(&env, ChainAddressError::Unauthorized);
         }
 
@@ -98,7 +107,14 @@ impl AddressManager {
         let owner = Registration::get_owner(env.clone(), username_hash.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::AddStellarAddress) {
+        if owner != caller
+            && !storage::has_permission(
+                &env,
+                &username_hash,
+                &caller,
+                Permission::AddStellarAddress,
+            )
+        {
             panic_with_error!(&env, CoreError::Unauthorized);
         }
 
@@ -133,7 +149,14 @@ impl AddressManager {
         let owner = Registration::get_owner(env.clone(), username_hash.clone())
             .unwrap_or_else(|| panic_with_error!(&env, CoreError::NotFound));
 
-        if owner != caller && !storage::has_permission(&env, &username_hash, &caller, Permission::RemoveStellarAddress) {
+        if owner != caller
+            && !storage::has_permission(
+                &env,
+                &username_hash,
+                &caller,
+                Permission::RemoveStellarAddress,
+            )
+        {
             panic_with_error!(&env, CoreError::Unauthorized);
         }
 
