@@ -100,11 +100,8 @@ impl AuctionContract {
             return Err(errors::AuctionError::InvalidState);
         }
 
-
         // Transfer asset back to bidder (single transfer)
         let asset = storage::auction_get_asset(&env, id)?;
-
-        let asset = storage::auction_get_asset(&env, id);
 
         let token = soroban_sdk::token::Client::new(&env, &asset);
         token.transfer(&env.current_contract_address(), &bidder, &amount);
@@ -112,14 +109,10 @@ impl AuctionContract {
         storage::auction_set_bid_refunded(&env, id, &bidder);
         storage::auction_set_outbid_amount(&env, id, &bidder, 0);
 
-
         // Emit a single refund event
         events::emit_bid_refunded(&env, &soroban_sdk::BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
 
         Ok(())
-
-        events::emit_bid_refunded(&env, &BytesN::from_array(&env, &[0u8; 32]), &bidder, amount);
-
     }
 
     pub fn close_auction_by_id(env: Env, id: u32) -> Result<(), errors::AuctionError> {

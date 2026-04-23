@@ -97,18 +97,10 @@ pub fn emit_bid_refunded(
     bidder: &Address,
     refund_amount: i128,
 ) {
-
     BidRefundedEvent {
         username_hash: username_hash.clone(),
         bidder: bidder.clone(),
         refund_amount,
     }
     .publish(env);
-
-    #[allow(deprecated)]
-    env.events().publish(
-        (BID_REFUNDED, username_hash.clone()),
-        (bidder.clone(), refund_amount),
-    );
-
 }

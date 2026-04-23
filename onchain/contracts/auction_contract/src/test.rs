@@ -41,7 +41,7 @@ mod tests {
         let events = env.events().all();
         assert!(!events.is_empty());
         let mut found = false;
-        for (_contract, topics, data) in events.iter().rev() {
+        for (_contract, topics, _data) in events.iter().rev() {
             let event_name: Result<soroban_sdk::Symbol, _> = soroban_sdk::Symbol::try_from_val(
                 &env,
                 &topics.get(0).expect("event topic missing"),
@@ -92,7 +92,7 @@ mod tests {
         assert!(!events.is_empty());
 
         let mut found = false;
-        for (_contract, topics, data) in events.iter().rev() {
+        for (_contract, topics, _data) in events.iter().rev() {
             let event_name: Result<soroban_sdk::Symbol, _> = soroban_sdk::Symbol::try_from_val(
                 &env,
                 &topics.get(0).expect("event topic missing"),
