@@ -5,7 +5,7 @@ use soroban_sdk::{contract, contractimpl, IntoVal, Symbol, TryFromVal, Val, Vec}
 use soroban_sdk::{Address, BytesN, Env};
 
 use crate::errors::FactoryError;
-use crate::events::USERNAME_DEPLOYED;
+use crate::events::{OWNERSHIP_TRANSFERRED, USERNAME_DEPLOYED};
 use crate::{FactoryContract, FactoryContractClient};
 
 #[contract]
@@ -343,4 +343,114 @@ fn contract_getters_follow_soroban_convention() {
     let (_, factory, auction_contract, core_contract) = setup_factory(&env);
     assert_eq!(factory.auction_contract(), Some(auction_contract));
     assert_eq!(factory.core_contract(), Some(core_contract));
+}
+
+#[test]
+fn test_transfer_username_success_v2() {
+    let env = Env::default();
+    let (factory_id, factory, auction_contract, _core_contract) = setup_factory(&env);
+    
+    // 1. Deploy
+    let owner = Address::generate(&env);
+    let hash = username_hash(&env);
+    let deploy_args: Vec<Val> = (hash.clone(), owner.clone()).into_val(&env);
+    
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "deploy_username",
+            args: deploy_args,
+            sub_invokes: &[],
+        },
+    }]);
+    factory.deploy_username(&hash, &owner);
+    
+    // 2. Transfer
+    let new_owner = Address::generate(&env);
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+    factory.transfer_username(&hash, &new_owner);
+    
+    // 3. Assertions
+    let record = factory.get_username_record(&hash).expect("record must exist");
+    assert_eq!(record.owner, new_owner);
+}
+
+#[test]
+fn test_transfer_username_unconfigured_auction_contract_fails() {
+    let env = Env::default();
+    let (factory_id, _) = setup_unconfigured_factory(&env);
+    
+    let hash = username_hash(&env);
+    let new_owner = Address::generate(&env);
+    
+    let result = env.try_invoke_contract::<(), FactoryError>(
+        &factory_id,
+        &Symbol::new(&env, "transfer_username"),
+        Vec::<Val>::from_array(&env, [hash.into_val(&env), new_owner.into_val(&env)]),
+    );
+    
+    assert_eq!(result, Err(Ok(FactoryError::Unauthorized)));
+}
+
+#[test]
+#[should_panic(expected = "Username not deployed")]
+fn test_transfer_username_missing_record_fails() {
+    let env = Env::default();
+    let (factory_id, factory, auction_contract, _) = setup_factory(&env);
+    
+    let hash = username_hash(&env);
+    let new_owner = Address::generate(&env);
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    
+    env.mock_auths(&[MockAuth {
+        address: &auction_contract,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+    
+    factory.transfer_username(&hash, &new_owner);
+}
+
+#[test]
+fn test_transfer_username_unauthorized_caller_fails() {
+    let env = Env::default();
+    let (factory_id, _, _, _) = setup_factory(&env);
+    
+    let wrong_caller = Address::generate(&env);
+    let hash = username_hash(&env);
+    let new_owner = Address::generate(&env);
+    let transfer_args: Vec<Val> = (hash.clone(), new_owner.clone()).into_val(&env);
+    
+    env.mock_auths(&[MockAuth {
+        address: &wrong_caller,
+        invoke: &MockAuthInvoke {
+            contract: &factory_id,
+            fn_name: "transfer_username",
+            args: transfer_args,
+            sub_invokes: &[],
+        },
+    }]);
+    
+    let result = env.try_invoke_contract::<(), FactoryError>(
+        &factory_id,
+        &Symbol::new(&env, "transfer_username"),
+        Vec::<Val>::from_array(&env, [hash.into_val(&env), new_owner.into_val(&env)]),
+    );
+    
+    assert!(result.is_err());
 }

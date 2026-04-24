@@ -1,5 +1,5 @@
 #![no_std]
-
+//! Factory Contract.
 /// Error types returned by the factory contract.
 mod errors;
 /// Event emission helpers.
