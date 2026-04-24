@@ -386,7 +386,7 @@ fn test_transfer_username_unconfigured_auction_contract_fails() {
 #[test]
 fn test_transfer_username_missing_record_fails() {
     let env = Env::default();
-    let (factory_id, factory, auction_contract, _) = setup_factory(&env);
+    let (factory_id, _factory, auction_contract, _) = setup_factory(&env);
 
     let hash = username_hash(&env);
     let new_owner = Address::generate(&env);
