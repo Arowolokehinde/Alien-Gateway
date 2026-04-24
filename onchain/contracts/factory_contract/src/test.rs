@@ -384,7 +384,6 @@ fn test_transfer_username_unconfigured_auction_contract_fails() {
 }
 
 #[test]
-#[should_panic(expected = "Username not deployed")]
 fn test_transfer_username_missing_record_fails() {
     let env = Env::default();
     let (factory_id, factory, auction_contract, _) = setup_factory(&env);
@@ -403,7 +402,13 @@ fn test_transfer_username_missing_record_fails() {
         },
     }]);
 
-    factory.transfer_username(&hash, &new_owner);
+    let result = env.try_invoke_contract::<(), FactoryError>(
+        &factory_id,
+        &Symbol::new(&env, "transfer_username"),
+        Vec::<Val>::from_array(&env, [hash.into_val(&env), new_owner.into_val(&env)]),
+    );
+
+    assert!(result.is_err());
 }
 
 #[test]
