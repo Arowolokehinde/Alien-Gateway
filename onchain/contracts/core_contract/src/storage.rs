@@ -23,6 +23,7 @@ pub enum DataKey {
     Operator,
     ShieldedAddress(BytesN<32>),
     CreatedAt(BytesN<32>),
+    Delegate(BytesN<32>, Address),
 }
 
 pub fn set_privacy_mode(env: &Env, username_hash: &BytesN<32>, mode: &PrivacyMode) {
@@ -112,4 +113,48 @@ pub fn get_created_at(env: &Env, username_hash: &BytesN<32>) -> Option<u64> {
     env.storage()
         .persistent()
         .get(&DataKey::CreatedAt(username_hash.clone()))
+}
+
+pub fn set_delegate_permissions(
+    env: &Env,
+    username_hash: &BytesN<32>,
+    delegate: &Address,
+    permissions: &crate::types::PermissionSet,
+) {
+    let key = DataKey::Delegate(username_hash.clone(), delegate.clone());
+    env.storage().persistent().set(&key, permissions);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
+
+pub fn get_delegate_permissions(
+    env: &Env,
+    username_hash: &BytesN<32>,
+    delegate: &Address,
+) -> Option<crate::types::PermissionSet> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Delegate(username_hash.clone(), delegate.clone()))
+}
+
+pub fn remove_delegate_permissions(env: &Env, username_hash: &BytesN<32>, delegate: &Address) {
+    env.storage()
+        .persistent()
+        .remove(&DataKey::Delegate(username_hash.clone(), delegate.clone()));
+}
+
+pub fn has_permission(
+    env: &Env,
+    username_hash: &BytesN<32>,
+    caller: &Address,
+    permission: crate::types::Permission,
+) -> bool {
+    if let Some(permissions) = get_delegate_permissions(env, username_hash, caller) {
+        permissions.permissions.contains(&permission)
+    } else {
+        false
+    }
 }

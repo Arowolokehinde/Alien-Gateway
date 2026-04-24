@@ -1,6 +1,8 @@
 use crate::registration::DataKey as RegistrationKey;
 use crate::smt_root::SmtRoot;
-use crate::types::{AddressMetadata, ChainType, PrivacyMode, PublicSignals};
+use crate::types::{
+    AddressMetadata, ChainType, Permission, PermissionSet, PrivacyMode, PublicSignals,
+};
 use crate::{Contract, ContractClient};
 use escrow_contract::types::{
     AutoPay, ScheduledPayment as EscrowScheduledPayment, VaultConfig, VaultState,
@@ -294,8 +296,9 @@ fn test_set_memo_and_resolve_flow() {
     let new_root = BytesN::from_array(&env, &[2u8; 32]);
 
     let signals = signals(&hash, root, new_root);
+    client.register(&caller, &hash);
     client.register_resolver(&caller, &hash, &dummy_proof(&env), &signals);
-    client.set_memo(&hash, &4242u64);
+    client.set_memo(&caller, &hash, &4242u64);
 
     let (resolved_wallet, memo) = client.resolve(&hash);
     assert_eq!(resolved_wallet, caller);
@@ -332,7 +335,7 @@ fn test_set_privacy_mode_to_shielded() {
     assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Normal);
     assert_eq!(client.resolve(&hash), (owner.clone(), None));
 
-    client.set_privacy_mode(&hash, &PrivacyMode::Shielded);
+    client.set_privacy_mode(&owner, &hash, &PrivacyMode::Shielded);
 
     assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Shielded);
     assert_eq!(client.resolve(&hash), (contract_id, None));
@@ -355,10 +358,10 @@ fn test_set_privacy_mode_to_normal() {
         &signals(&hash, root, new_root),
     );
 
-    client.set_privacy_mode(&hash, &PrivacyMode::Shielded);
+    client.set_privacy_mode(&owner, &hash, &PrivacyMode::Shielded);
     assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Shielded);
 
-    client.set_privacy_mode(&hash, &PrivacyMode::Normal);
+    client.set_privacy_mode(&owner, &hash, &PrivacyMode::Normal);
     assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Normal);
 }
 
@@ -376,7 +379,7 @@ fn test_set_privacy_mode_non_owner_rejected() {
             .set(&RegistrationKey::Commitment(hash.clone()), &owner);
     });
 
-    let args: Vec<Val> = (hash.clone(), PrivacyMode::Shielded).into_val(&env);
+    let args: Vec<Val> = (attacker.clone(), hash.clone(), PrivacyMode::Shielded).into_val(&env);
     env.mock_auths(&[MockAuth {
         address: &attacker,
         invoke: &MockAuthInvoke {
@@ -1587,4 +1590,130 @@ fn test_get_created_at_unchanged_after_transfer() {
     client.transfer_ownership(&owner, &hash, &new_owner);
 
     assert_eq!(client.get_created_at(&hash), Some(1_000_000u64));
+}
+
+#[test]
+fn test_delegate_scoped_permissions() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client, root) = setup_with_root(&env);
+
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let hash = commitment(&env, 100);
+    let new_root = BytesN::from_array(&env, &[101u8; 32]);
+
+    client.register(&owner, &hash);
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &signals(&hash, root, new_root),
+    );
+
+    // Grant SetMemo permission
+    let mut permissions = Vec::new(&env);
+    permissions.push_back(Permission::SetMemo);
+    client.grant_delegate(&owner, &hash, &delegate, &PermissionSet { permissions });
+
+    // Delegate can call set_memo
+    client.set_memo(&delegate, &hash, &1234u64);
+    let (_, memo) = client.resolve(&hash);
+    assert_eq!(memo, Some(1234u64));
+
+    // Delegate cannot call set_privacy_mode (not in scope)
+    let result = client.try_set_privacy_mode(&delegate, &hash, &PrivacyMode::Shielded);
+    assert!(result.is_err());
+
+    // Revoke permissions
+    client.revoke_delegate(&owner, &hash, &delegate);
+
+    // Delegate can no longer call set_memo
+    let result = client.try_set_memo(&delegate, &hash, &5678u64);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_delegate_address_management() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let hash = commitment(&env, 101);
+
+    client.register(&owner, &hash);
+
+    // Grant address management permissions
+    let mut permissions = Vec::new(&env);
+    permissions.push_back(Permission::AddChainAddress);
+    permissions.push_back(Permission::RemoveChainAddress);
+    permissions.push_back(Permission::AddStellarAddress);
+    permissions.push_back(Permission::RemoveStellarAddress);
+    client.grant_delegate(&owner, &hash, &delegate, &PermissionSet { permissions });
+
+    // Test chain address
+    let eth_addr = Bytes::from_slice(&env, b"0x1234567890123456789012345678901234567890");
+    client.add_chain_address(&delegate, &hash, &ChainType::Evm, &eth_addr);
+    assert_eq!(
+        client.get_chain_address(&hash, &ChainType::Evm),
+        Some(eth_addr)
+    );
+
+    client.remove_chain_address(&delegate, &hash, &ChainType::Evm);
+    assert_eq!(client.get_chain_address(&hash, &ChainType::Evm), None);
+
+    // Test stellar address
+    let stellar_addr = Address::generate(&env);
+    client.add_stellar_address(&delegate, &hash, &stellar_addr);
+    assert_eq!(client.resolve_stellar(&hash), stellar_addr);
+
+    client.remove_stellar_address(&delegate, &hash, &stellar_addr);
+    let result = client.try_resolve_stellar(&hash);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unauthorized_delegate_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let hash = commitment(&env, 102);
+
+    client.register(&owner, &hash);
+
+    // Attacker tries to set memo
+    let result = client.try_set_memo(&attacker, &hash, &999u64);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_delegate_set_privacy_mode() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client, root) = setup_with_root(&env);
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let hash = commitment(&env, 103);
+    let new_root = BytesN::from_array(&env, &[104u8; 32]);
+
+    client.register(&owner, &hash);
+    client.register_resolver(
+        &owner,
+        &hash,
+        &dummy_proof(&env),
+        &signals(&hash, root, new_root),
+    );
+
+    // Grant SetPrivacyMode
+    let mut permissions = Vec::new(&env);
+    permissions.push_back(Permission::SetPrivacyMode);
+    client.grant_delegate(&owner, &hash, &delegate, &PermissionSet { permissions });
+
+    client.set_privacy_mode(&delegate, &hash, &PrivacyMode::Shielded);
+    assert_eq!(client.get_privacy_mode(&hash), PrivacyMode::Shielded);
 }
