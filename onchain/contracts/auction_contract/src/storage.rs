@@ -1,10 +1,10 @@
+use crate::errors::AuctionError;
 use crate::types::{AuctionState, AuctionStatus, Bid, InstanceKey};
 use soroban_sdk::{contracttype, Address, BytesN, Env, Vec};
 
-/// TTL constants for persistent storage entries.
-/// PERSISTENT_BUMP_AMOUNT: 30 days × 24h × 3600s / 5s per ledger = 518_400 ledgers
+/// The amount of ledger entries to bump persistent storage by.
 pub(crate) const PERSISTENT_BUMP_AMOUNT: u32 = 518_400; // 30 * 24 * 3600 / 5
-/// PERSISTENT_LIFETIME_THRESHOLD: 7 days × 24h × 3600s / 5s per ledger = 120_960 ledgers
+/// The threshold for persistent storage TTL to trigger an auto-bump.
 pub(crate) const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // 7 * 24 * 3600 / 5
 
 #[contracttype]
@@ -69,7 +69,6 @@ pub fn set_highest_bid(env: &Env, bid: u128) {
     env.storage().instance().set(&InstanceKey::HighestBid, &bid);
 }
 
-// --- id-scoped auction storage ---
 use crate::types::AuctionKey;
 
 pub fn auction_exists(env: &Env, id: u32) -> bool {
@@ -93,11 +92,11 @@ pub fn auction_set_status(env: &Env, id: u32, status: crate::types::AuctionStatu
     );
 }
 
-pub fn auction_get_seller(env: &Env, id: u32) -> Address {
+pub fn auction_get_seller(env: &Env, id: u32) -> Result<Address, AuctionError> {
     env.storage()
         .persistent()
         .get(&AuctionKey::Seller(id))
-        .expect("seller must be set before auction close")
+        .ok_or(AuctionError::InvalidState)
 }
 
 pub fn auction_set_seller(env: &Env, id: u32, seller: &Address) {
@@ -110,11 +109,11 @@ pub fn auction_set_seller(env: &Env, id: u32, seller: &Address) {
     );
 }
 
-pub fn auction_get_asset(env: &Env, id: u32) -> Address {
+pub fn auction_get_asset(env: &Env, id: u32) -> Result<Address, AuctionError> {
     env.storage()
         .persistent()
         .get(&AuctionKey::Asset(id))
-        .expect("asset must be set at auction creation")
+        .ok_or(AuctionError::InvalidState)
 }
 
 pub fn auction_set_asset(env: &Env, id: u32, asset: &Address) {
@@ -261,8 +260,6 @@ pub fn auction_set_bid_refunded(env: &Env, id: u32, bidder: &Address) {
         PERSISTENT_BUMP_AMOUNT,
     );
 }
-
-// --- persistent storage helpers for AuctionState and Bid ---
 
 pub fn get_auction(env: &Env, hash: &BytesN<32>) -> Option<AuctionState> {
     env.storage()

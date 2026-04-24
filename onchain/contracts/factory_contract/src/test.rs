@@ -15,17 +15,21 @@ struct StubContract;
 impl StubContract {}
 
 fn setup_factory(env: &Env) -> (Address, FactoryContractClient<'_>, Address, Address) {
+    env.mock_all_auths();
     let factory_id = env.register(FactoryContract, ());
     let factory = FactoryContractClient::new(env, &factory_id);
+    let owner = Address::generate(env);
     let auction_contract = env.register(StubContract, ());
     let core_contract = env.register(StubContract, ());
 
+    factory.initialize(&owner);
     factory.configure(&auction_contract, &core_contract);
 
     (factory_id, factory, auction_contract, core_contract)
 }
 
 fn setup_unconfigured_factory(env: &Env) -> (Address, FactoryContractClient<'_>) {
+    env.mock_all_auths();
     let factory_id = env.register(FactoryContract, ());
     let factory = FactoryContractClient::new(env, &factory_id);
     (factory_id, factory)
@@ -34,10 +38,6 @@ fn setup_unconfigured_factory(env: &Env) -> (Address, FactoryContractClient<'_>)
 fn username_hash(env: &Env) -> BytesN<32> {
     BytesN::from_array(env, &[7; 32])
 }
-
-// ============================================================================
-// OFFICIAL UPSTREAM TESTS
-// ============================================================================
 
 #[test]
 fn deploy_username_stores_record_and_emits_event() {
@@ -113,15 +113,7 @@ fn duplicate_deployment_is_rejected() {
             sub_invokes: &[],
         },
     }]);
-    let result = env.try_invoke_contract::<(), FactoryError>(
-        &factory_id,
-        &Symbol::new(&env, "deploy_username"),
-        Vec::<Val>::from_array(
-            &env,
-            [hash.clone().into_val(&env), owner.clone().into_val(&env)],
-        ),
-    );
-
+    let result = factory.try_deploy_username(&hash, &owner);
     assert_eq!(result, Err(Ok(FactoryError::AlreadyDeployed)));
 }
 
@@ -184,10 +176,6 @@ fn get_username_owner_returns_none_for_unregistered_hash() {
     assert_eq!(factory.get_username_owner(&unknown_hash), None);
 }
 
-// ============================================================================
-// ISSUE #108 SUPPLEMENTARY TESTS
-// ============================================================================
-
 #[test]
 fn test_deploy_username_success() {
     let env = Env::default();
@@ -241,15 +229,7 @@ fn test_deploy_username_duplicate_fails() {
             sub_invokes: &[],
         },
     }]);
-    let result = env.try_invoke_contract::<(), FactoryError>(
-        &factory_id,
-        &Symbol::new(&env, "deploy_username"),
-        Vec::<Val>::from_array(
-            &env,
-            [hash.clone().into_val(&env), owner.clone().into_val(&env)],
-        ),
-    );
-
+    let result = factory.try_deploy_username(&hash, &owner);
     assert_eq!(result, Err(Ok(FactoryError::AlreadyDeployed)));
 }
 
@@ -315,12 +295,10 @@ fn get_username_record_extends_ttl_on_read() {
     }]);
     factory.deploy_username(&hash, &owner);
 
-    // Advance the ledger so the remaining TTL drops below the lifetime threshold.
     env.ledger().with_mut(|l| {
         l.sequence_number += PERSISTENT_BUMP_AMOUNT - PERSISTENT_LIFETIME_THRESHOLD + 1;
     });
 
-    // Reading the record should bump the TTL back to PERSISTENT_BUMP_AMOUNT.
     let record = factory.get_username_record(&hash);
     assert!(record.is_some());
 
